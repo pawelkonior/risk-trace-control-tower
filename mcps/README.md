@@ -6,12 +6,12 @@ or frontend application runtime behavior.
 
 ## What Is Included
 
-- `.mcp/docker-compose.yml` starts local SonarQube, its Postgres database, and OWASP ZAP.
+- `mcps/docker-compose.yml` starts local SonarQube, its Postgres database, and OWASP ZAP.
 - `sonarqube-init` is a one-shot Compose service with the `setup` profile. It creates the backend
   and frontend SonarQube projects, refreshes a local token, and stores it in the
   `risktrace_mcp_secrets` Docker volume.
 - `sonarqube-mcp`, `owasp-zap-mcp`, and `sonatype-guide-mcp` are stdio MCP services intended to
-  be started by IBM Bob through `.bob/mcp.json`. They are hidden behind the `mcp` profile so a
+  be started by IBM Bob through local `.bob/mcp.json`. They are hidden behind the `mcp` profile so a
   plain Compose `up` does not start them.
 - `sonar-scan-backend` and `sonar-scan-frontend` publish analysis to the local SonarQube. They
   are hidden behind the `scan` profile.
@@ -21,10 +21,10 @@ or frontend application runtime behavior.
 Do not put real tokens or passwords in committed files. Copy the template and edit local values:
 
 ```bash
-cp .mcp/.env.example .mcp/.env
+cp mcps/.env.example mcps/.env
 ```
 
-`.mcp/.env` is ignored by git. The generated SonarQube token is stored in the
+`mcps/.env` is ignored by git. The generated SonarQube token is stored in the
 `risktrace_mcp_secrets` Docker volume, not in the repository.
 
 ## Start SonarQube
@@ -32,13 +32,13 @@ cp .mcp/.env.example .mcp/.env
 From the repository root:
 
 ```bash
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml up -d sonarqube
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml up -d sonarqube
 ```
 
 Then initialize the local projects and token:
 
 ```bash
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile setup run --rm -T sonarqube-init
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml --profile setup run --rm -T sonarqube-init
 ```
 
 The initializer:
@@ -50,18 +50,18 @@ The initializer:
 3. Revokes and regenerates the token named by `SONARQUBE_TOKEN_NAME`.
 4. Writes the MCP/scanner environment to the shared Docker volume.
 
-If you changed the local SonarQube admin password in the UI, update `.mcp/.env` with the matching
+If you changed the local SonarQube admin password in the UI, update `mcps/.env` with the matching
 `SONARQUBE_ADMIN_USER` and `SONARQUBE_ADMIN_PASSWORD` before running `sonarqube-init`.
 
 ## Analyze Backend And Frontend
 
-The local project settings are committed under `.mcp/sonarqube/` and contain no secrets.
+The local project settings are committed under `mcps/sonarqube/` and contain no secrets.
 
 Run scans from the repository root:
 
 ```bash
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile scan run --rm -T sonar-scan-backend
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile scan run --rm -T sonar-scan-frontend
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml --profile scan run --rm -T sonar-scan-backend
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml --profile scan run --rm -T sonar-scan-frontend
 ```
 
 These services read the SonarQube token from the shared Docker volume. Run `sonarqube-init` again
@@ -72,7 +72,7 @@ if the token is missing or should be rotated.
 From the repository root:
 
 ```bash
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml up -d zap
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml up -d zap
 ```
 
 This starts the ZAP daemon at `http://127.0.0.1:8090`, installs the official ZAP MCP Integration
@@ -86,12 +86,13 @@ The default target hint is:
 ZAP_MCP_TARGET_URL=http://127.0.0.1:5173
 ```
 
-Change it in `.mcp/.env` if the MCP workflow should target a different local URL.
+Change it in `mcps/.env` if the MCP workflow should target a different local URL.
 
 ## IBM Bob MCP
 
-`.bob/mcp.json` is committed and is the source of truth for IBM Bob. Local RiskTrace MCP entries
-start Compose services directly with the `mcp` profile:
+`.bob/mcp.example.json` is committed as the shared template. Copy it to local `.bob/mcp.json`,
+which is ignored by git and is the source of truth for IBM Bob on each workstation. Local
+RiskTrace MCP entries start Compose services directly with the `mcp` profile:
 
 - `risktrace-sonarqube` -> `sonarqube-mcp`
 - `owaspZap` -> `owasp-zap-mcp`
@@ -103,5 +104,5 @@ tooling runtime.
 ## Stop Local Tooling
 
 ```bash
-docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml down
+docker compose --env-file mcps/.env -f mcps/docker-compose.yml down
 ```
