@@ -1,0 +1,372 @@
+{
+  "corpus_version": "0.1.0",
+  "generated_at": "2026-05-16T22:50:00.561Z",
+  "summary": {
+    "total_regulations": 9,
+    "total_controls": 15,
+    "total_mappings": 3,
+    "referential_integrity": "validated by corpus loader tests"
+  },
+  "regulations": {
+    "count": 9,
+    "items": [
+      {
+        "id": "BCBS239",
+        "title": "BCBS 239 - Principles for effective risk data aggregation and risk reporting",
+        "jurisdiction": "GLOBAL",
+        "domains": [
+          "data_quality",
+          "reporting",
+          "governance",
+          "audit_trail"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "CRR3",
+        "title": "Capital Requirements Regulation III (CRR3) / CRD6",
+        "jurisdiction": "EU",
+        "domains": [
+          "capital_adequacy",
+          "credit_risk",
+          "market_risk",
+          "operational_risk",
+          "reporting"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "DORA",
+        "title": "Digital Operational Resilience Act (DORA)",
+        "jurisdiction": "EU",
+        "domains": [
+          "ict_security",
+          "operational_risk",
+          "governance",
+          "testing"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "EBA_ICT_SECURITY",
+        "title": "EBA Guidelines on ICT and Security Risk Management",
+        "jurisdiction": "EU",
+        "domains": [
+          "ict_security",
+          "operational_risk",
+          "governance",
+          "data_protection"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "EBA_REPORTING_4",
+        "title": "EBA Reporting Framework 4.0",
+        "jurisdiction": "EU",
+        "domains": [
+          "reporting",
+          "data_quality",
+          "audit_trail"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "GDPR",
+        "title": "General Data Protection Regulation (GDPR)",
+        "jurisdiction": "EU",
+        "domains": [
+          "data_protection",
+          "governance",
+          "audit_trail",
+          "ict_security"
+        ],
+        "requires_human_review": true
+      },
+      {
+        "id": "INTERNAL_AUDIT_EVIDENCE",
+        "title": "Internal Audit Evidence and Retention Policy",
+        "jurisdiction": "INTERNAL",
+        "domains": [
+          "audit_trail",
+          "governance",
+          "data_quality"
+        ],
+        "requires_human_review": false
+      },
+      {
+        "id": "INTERNAL_RULE_GOVERNANCE",
+        "title": "Internal Rule Governance and Change Management Policy",
+        "jurisdiction": "INTERNAL",
+        "domains": [
+          "governance",
+          "audit_trail",
+          "data_quality"
+        ],
+        "requires_human_review": false
+      },
+      {
+        "id": "INTERNAL_SDLC",
+        "title": "Internal Secure Software Development Lifecycle Policy",
+        "jurisdiction": "INTERNAL",
+        "domains": [
+          "governance",
+          "testing",
+          "ict_security",
+          "audit_trail"
+        ],
+        "requires_human_review": false
+      }
+    ],
+    "by_jurisdiction": {
+      "GLOBAL": 1,
+      "EU": 5,
+      "INTERNAL": 3
+    },
+    "requiring_human_review": 6
+  },
+  "controls": {
+    "count": 15,
+    "items": [
+      {
+        "id": "ARCH-ADR-001",
+        "title": "Architecture Decision Records",
+        "severity": "medium",
+        "domains": [
+          "architecture",
+          "governance"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "DORA-ICT-001",
+        "title": "ICT Resilience Testing",
+        "severity": "high",
+        "domains": [
+          "ict_security",
+          "testing",
+          "operational_risk"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "PERF-RWA-001",
+        "title": "RWA Calculation Performance",
+        "severity": "medium",
+        "domains": [
+          "performance",
+          "capital_adequacy"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "REL-EVID-001",
+        "title": "Release Evidence Package",
+        "severity": "critical",
+        "domains": [
+          "governance",
+          "audit_trail"
+        ],
+        "required_evidence_count": 3,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-AUDIT-001",
+        "title": "Calculation Audit Trail and Traceability",
+        "severity": "critical",
+        "domains": [
+          "audit_trail",
+          "capital_adequacy"
+        ],
+        "required_evidence_count": 2,
+        "acceptance_criteria_count": 2,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-CALC-001",
+        "title": "RWA Calculation Accuracy and Traceability",
+        "severity": "critical",
+        "domains": [
+          "capital_adequacy",
+          "credit_risk",
+          "audit_trail"
+        ],
+        "required_evidence_count": 3,
+        "acceptance_criteria_count": 3,
+        "test_obligations_count": 2
+      },
+      {
+        "id": "RWA-DATA-001",
+        "title": "Input Data Completeness and Validation",
+        "severity": "high",
+        "domains": [
+          "data_quality",
+          "credit_risk"
+        ],
+        "required_evidence_count": 2,
+        "acceptance_criteria_count": 2,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-DQ-001",
+        "title": "Data Quality Flags and Error Handling",
+        "severity": "high",
+        "domains": [
+          "data_quality",
+          "audit_trail"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-RECON-001",
+        "title": "RWA Calculation Reconciliation",
+        "severity": "high",
+        "domains": [
+          "capital_adequacy",
+          "data_quality",
+          "audit_trail"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-REPORT-001",
+        "title": "Regulatory Report Validation and Submission",
+        "severity": "critical",
+        "domains": [
+          "reporting",
+          "audit_trail"
+        ],
+        "required_evidence_count": 2,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "RWA-RULE-001",
+        "title": "Regulatory Rule Version Control and Change Management",
+        "severity": "critical",
+        "domains": [
+          "governance",
+          "audit_trail",
+          "data_quality"
+        ],
+        "required_evidence_count": 3,
+        "acceptance_criteria_count": 2,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "SEC-ACCESS-001",
+        "title": "Access Control and Authentication",
+        "severity": "critical",
+        "domains": [
+          "ict_security",
+          "governance"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "SEC-INPUT-001",
+        "title": "Input Validation and Sanitization",
+        "severity": "critical",
+        "domains": [
+          "ict_security",
+          "data_quality"
+        ],
+        "required_evidence_count": 2,
+        "acceptance_criteria_count": 2,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "SEC-LOG-001",
+        "title": "Secure Logging and Sensitive Data Protection",
+        "severity": "high",
+        "domains": [
+          "ict_security",
+          "data_protection",
+          "audit_trail"
+        ],
+        "required_evidence_count": 2,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      },
+      {
+        "id": "TEST-REG-001",
+        "title": "Regulatory Test Coverage",
+        "severity": "high",
+        "domains": [
+          "testing",
+          "governance"
+        ],
+        "required_evidence_count": 1,
+        "acceptance_criteria_count": 1,
+        "test_obligations_count": 1
+      }
+    ],
+    "by_severity": {
+      "medium": 2,
+      "high": 6,
+      "critical": 7
+    },
+    "by_domain": {
+      "architecture": 1,
+      "governance": 5,
+      "ict_security": 4,
+      "testing": 2,
+      "operational_risk": 1,
+      "performance": 1,
+      "capital_adequacy": 4,
+      "audit_trail": 8,
+      "credit_risk": 2,
+      "data_quality": 5,
+      "reporting": 1,
+      "data_protection": 1
+    }
+  },
+  "mappings": {
+    "count": 3,
+    "types": [
+      {
+        "file": "artifact-type-to-controls.json",
+        "description": "Maps artifact types (feature, code diff, architecture, release) to relevant engineering controls",
+        "mapping_count": 10,
+        "validated": true
+      },
+      {
+        "file": "domain-to-regulations.json",
+        "description": "Maps regulatory domains to relevant regulations",
+        "mapping_count": 14,
+        "validated": true
+      },
+      {
+        "file": "keywords-to-controls.json",
+        "description": "Maps keywords found in code, commits, or artifacts to relevant engineering controls",
+        "mapping_count": 32,
+        "validated": true
+      }
+    ]
+  },
+  "validation": {
+    "duplicate_ids_check": "covered by corpusLoader.test.ts",
+    "dangling_references_check": "covered by corpusLoader.test.ts",
+    "schema_validation": "covered by corpusLoader.test.ts and schemas.test.ts",
+    "referential_integrity": "passed in npm test"
+  },
+  "notes": [
+    "All regulations and controls are loaded and validated by the corpus loader.",
+    "Referential integrity is enforced for mappings and control regulatory basis references.",
+    "Duplicate regulation and control IDs are rejected during corpus loading.",
+    "6 out of 9 regulations require human review before production use.",
+    "7 out of 15 controls are marked critical in the corpus."
+  ]
+}

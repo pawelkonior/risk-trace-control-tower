@@ -1,0 +1,24 @@
+
+> @risk-trace/regulatory-mcp@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /Users/pawel/ai_projects/risk-trace-control-tower/mcps/regulatory_mcp
+
+ ✓ src/config.test.ts (2 tests) 1ms
+ ✓ src/schemas/schemas.test.ts (13 tests) 6ms
+ ✓ src/services/reviewServices.test.ts (3 tests) 8ms
+ ✓ src/services/controlMatcher.test.ts (3 tests) 13ms
+ ✓ src/services/regulationSearch.test.ts (3 tests) 17ms
+ ✓ src/services/generationServices.test.ts (6 tests) 14ms
+ ✓ src/services/releaseReadiness.test.ts (3 tests) 14ms
+ ✓ src/services/corpusStore.test.ts (32 tests) 68ms
+ ✓ src/services/corpusLoader.test.ts (25 tests) 109ms
+ ✓ src/resources/registerResources.test.ts (2 tests) 13ms
+ ✓ src/tools/registerTools.test.ts (2 tests) 36ms
+
+ Test Files  11 passed (11)
+      Tests  94 passed (94)
+   Start at  00:51:10
+   Duration  397ms (transform 321ms, setup 0ms, collect 964ms, tests 299ms, environment 1ms, prepare 542ms)
+
