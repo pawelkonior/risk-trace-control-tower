@@ -1,0 +1,67 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 487B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:20-alpine
+#2 DONE 0.8s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 136B done
+#3 DONE 0.0s
+
+#4 [build 1/8] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#4 resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 11.51kB done
+#5 DONE 0.0s
+
+#6 [build 2/8] WORKDIR /app
+#6 CACHED
+
+#7 [build 3/8] COPY package.json package-lock.json ./
+#7 CACHED
+
+#8 [build 4/8] RUN npm ci
+#8 CACHED
+
+#9 [build 5/8] COPY tsconfig.json vitest.config.ts ./
+#9 CACHED
+
+#10 [build 6/8] COPY src ./src
+#10 DONE 0.0s
+
+#11 [build 7/8] COPY data ./data
+#11 DONE 0.0s
+
+#12 [build 8/8] RUN npm run build
+#12 0.165 
+#12 0.165 > @risk-trace/regulatory-mcp@0.1.0 build
+#12 0.165 > tsc
+#12 0.165 
+#12 DONE 1.3s
+
+#13 [runtime 4/6] RUN npm ci --omit=dev && npm cache clean --force
+#13 CACHED
+
+#14 [runtime 5/6] COPY --from=build /app/build ./build
+#14 DONE 0.0s
+
+#15 [runtime 6/6] COPY --from=build /app/data ./data
+#15 DONE 0.0s
+
+#16 exporting to image
+#16 exporting layers 0.0s done
+#16 exporting manifest sha256:31d9f8bd654af47e1472f5ee16e5612945ee01b4fa89fd6e8cf08aef221b1f3a done
+#16 exporting config sha256:701ce44b4a2de13af9dcb4e936ed9dd872c24785af8ca70f3b8b385debd58db4 done
+#16 exporting attestation manifest sha256:b755b027d1be90d1353aca592706cd0aa98df3ad85b8538068da0069d750e2b2 done
+#16 exporting manifest list sha256:903868b196937db01aeab326feb1b2623b6b7833a71a5b560ad52fcfa09d20bf done
+#16 naming to docker.io/library/bank-regulatory-controls-mcp:latest
+#16 naming to docker.io/library/bank-regulatory-controls-mcp:latest done
+#16 unpacking to docker.io/library/bank-regulatory-controls-mcp:latest 0.0s done
+#16 DONE 0.1s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/xt33fve6vk78zssahgu4y4gbw

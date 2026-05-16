@@ -4,6 +4,23 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../server.js";
 import { getToolDefinitions } from "./registerTools.js";
 
+function structuredContent(result: Awaited<ReturnType<Client["callTool"]>>, name: string) {
+  expect("structuredContent" in result, name).toBe(true);
+  return result.structuredContent as Record<string, unknown>;
+}
+
+function expectHumanReviewMetadata(
+  content: Record<string, unknown>,
+  name: string
+): void {
+  const metadata = content.metadata as Record<string, unknown> | undefined;
+  expect(metadata, `${name} metadata`).toBeDefined();
+  expect(metadata?.disclaimer, `${name} disclaimer`).toEqual(
+    expect.stringContaining("engineering control mapping")
+  );
+  expect(metadata?.requires_human_review, `${name} human review flag`).toBe(true);
+}
+
 async function withClient<T>(run: (client: Client) => Promise<T>): Promise<T> {
   const server = createServer();
   const client = new Client(
@@ -74,7 +91,7 @@ describe("MCP tools", () => {
       for (const [name, args] of Object.entries(examples)) {
         const result = await client.callTool({ name, arguments: args });
         expect(result.content.length, name).toBeGreaterThan(0);
-        expect("structuredContent" in result, name).toBe(true);
+        expectHumanReviewMetadata(structuredContent(result, name), name);
       }
     });
   });

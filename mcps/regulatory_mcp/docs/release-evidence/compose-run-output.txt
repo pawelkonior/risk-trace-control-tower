@@ -1,0 +1,9 @@
+ Network mcps_default Creating 
+ Network mcps_default Created 
+ Container regulatory-mcp-evidence-smoke Creating 
+ Container regulatory-mcp-evidence-smoke Created 
+[regulatory-mcp] Starting MCP server...
+[regulatory-mcp] Server name: regulatory-mcp
+[regulatory-mcp] Server version: 0.1.0
+[regulatory-mcp] Transport: STDIO
+[regulatory-mcp] Ready for connections

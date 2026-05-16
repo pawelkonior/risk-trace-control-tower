@@ -6,6 +6,8 @@ import {
 } from "./generationServices.js";
 import { assessReleaseReadiness, type ReleaseReadinessInput } from "./releaseReadiness.js";
 import { searchRegulations } from "./regulationSearch.js";
+import type { createMetadata } from "./serviceUtils.js";
+import type { SourceReferenceSummary } from "./serviceUtils.js";
 
 export interface MappingReportInput extends ReleaseReadinessInput {
   title?: string;
@@ -15,8 +17,11 @@ export interface MappingReportInput extends ReleaseReadinessInput {
 }
 
 export interface MappingReportResult {
+  metadata: ReturnType<typeof createMetadata>;
   markdown: string;
   readiness: ReturnType<typeof assessReleaseReadiness>;
+  source_references: SourceReferenceSummary[];
+  recommended_actions: string[];
 }
 
 function bullet(items: string[]): string {
@@ -107,7 +112,10 @@ export function generateRegulatoryMappingReport(
   ].join("\n");
 
   return {
+    metadata: readiness.metadata,
     markdown,
     readiness,
+    source_references: readiness.source_references,
+    recommended_actions: readiness.recommended_actions,
   };
 }
