@@ -7,8 +7,8 @@ Terraform module for deploying Amazon EKS 1.30 cluster with IRSA (IAM Roles for 
 - **EKS 1.30 Cluster** with environment-specific API endpoint exposure
 - **OIDC Provider** for IAM Roles for Service Accounts (IRSA)
 - **Managed Node Groups** with security-hardened launch templates
-- **4 EKS Addons** (vpc-cni, coredns, kube-proxy, aws-ebs-csi-driver)
-- **3 IRSA Roles** for zero-trust secret management
+- **5 EKS Addons** (vpc-cni, coredns, kube-proxy, aws-ebs-csi-driver, aws-load-balancer-controller)
+- **4 IRSA Roles** for zero-trust secret management
 - **CloudWatch Logging** for control plane audit trails
 - **IMDSv2 Enforcement** on all worker nodes
 
@@ -130,6 +130,43 @@ metadata:
 
 **Note**: This service account is automatically created by the `aws-ebs-csi-driver` addon.
 
+### 4. aws-load-balancer-controller
+- **Namespace**: `kube-system`
+- **Service Account**: `aws-load-balancer-controller`
+- **Permissions**: AWS Managed Policy `AWSLoadBalancerControllerIAMPolicy`
+- **Purpose**: Provision ALB/NLB for Kubernetes Ingress and Service resources
+
+**Kubernetes Service Account Annotation:**
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/rwa-control-tower-prod-aws-lb-controller-irsa
+```
+
+**Installation via Helm:**
+```bash
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=rwa-control-tower-prod \
+  --set serviceAccount.create=true \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/rwa-control-tower-prod-aws-lb-controller-irsa
+```
+
+**Verification:**
+```bash
+kubectl get deployment -n kube-system aws-load-balancer-controller
+kubectl describe sa aws-load-balancer-controller -n kube-system
+kubectl logs -n kube-system deployment/aws-load-balancer-controller
+```
+
 ## EKS Addons
 
 | Addon | Purpose | IRSA Required | Dependencies |
@@ -138,6 +175,7 @@ metadata:
 | coredns | DNS resolution | No | System node group |
 | kube-proxy | Network proxy | No | None |
 | aws-ebs-csi-driver | Persistent volumes | Yes | ebs-csi-controller-sa |
+| aws-load-balancer-controller | ALB/NLB provisioning | Yes | aws-load-balancer-controller SA |
 
 ## Outputs
 
@@ -163,6 +201,7 @@ metadata:
 - `rwa_backend_irsa_role_arn` - ARN for rwa-backend service account
 - `external_secrets_irsa_role_arn` - ARN for external-secrets-sa
 - `ebs_csi_controller_irsa_role_arn` - ARN for ebs-csi-controller-sa
+- `aws_load_balancer_controller_irsa_role_arn` - ARN for aws-load-balancer-controller service account
 
 ### CloudWatch Outputs
 - `cloudwatch_log_group_name` - Log group name
@@ -250,12 +289,12 @@ terraform plan -var-file=prod.tfvars
 - 2 Managed Node Groups (system, application)
 - 2 Launch Templates
 - 4 EKS Addons
-- 3 IRSA IAM Roles
-- 6 IAM Role Policy Attachments
+- 4 IRSA IAM Roles (ebs-csi, rwa-backend, external-secrets, aws-lb-controller)
+- 8 IAM Role Policy Attachments
 - 2 IAM Role Policies (inline)
 - 1 CloudWatch Log Group
 
-**Total**: ~20 AWS resources
+**Total**: ~22 AWS resources
 
 ## Cost Estimation
 

@@ -397,11 +397,11 @@ resource "aws_security_group" "redis" {
 
 resource "aws_vpc_security_group_ingress_rule" "redis_from_eks" {
   security_group_id = aws_security_group.redis.id
-  description       = "Allow Redis from EKS nodes only"
+  description       = "Allow Redis TLS from EKS nodes only"
 
   referenced_security_group_id = aws_security_group.eks_nodes.id
-  from_port                    = 6379
-  to_port                      = 6379
+  from_port                    = 6380 # TLS port — transit_encryption_mode=required
+  to_port                      = 6380
   ip_protocol                  = "tcp"
 }
 

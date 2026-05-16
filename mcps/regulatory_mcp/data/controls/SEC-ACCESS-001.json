@@ -1,0 +1,71 @@
+{
+  "id": "SEC-ACCESS-001",
+  "title": "Access Control and Authentication",
+  "description": "All system access must be authenticated and authorized. Access to sensitive data and operations must be logged.",
+  "severity": "critical",
+  "domains": ["ict_security", "governance"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "DORA",
+      "article": "Article 6",
+      "requirement_id": "DORA-ART-6",
+      "rationale": "ICT risk management requires access controls"
+    },
+    {
+      "regulation_id": "GDPR",
+      "article": "Article 32",
+      "requirement_id": "GDPR-ART-32",
+      "rationale": "Security measures include access control"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "audit_log",
+      "description": "Access logs for all system operations",
+      "required_for_release": false,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "SEC-ACCESS-001-AC1",
+      "description": "All API endpoints require authentication",
+      "verification_method": "automated_test"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "SEC-ACCESS-001-TO1",
+      "description": "Test authentication and authorization",
+      "test_type": "security_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "library",
+      "description": "Use OAuth2 or JWT for API authentication"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Unauthenticated API endpoints",
+      "risk": "Unauthorized access to sensitive data",
+      "alternative": "Require authentication for all endpoints"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Unauthenticated endpoints detected",
+      "description": "Block merge on security issues",
+      "automated": true
+    }
+  ],
+  "tags": ["security", "access-control", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

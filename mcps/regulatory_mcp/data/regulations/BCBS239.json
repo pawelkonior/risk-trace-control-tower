@@ -1,0 +1,85 @@
+{
+  "id": "BCBS239",
+  "title": "BCBS 239 - Principles for effective risk data aggregation and risk reporting",
+  "type": "standard",
+  "jurisdiction": "GLOBAL",
+  "status": "active",
+  "as_of": "2013-01-01T00:00:00.000Z",
+  "applies_to": ["credit_institution", "financial_institution"],
+  "domains": [
+    "data_quality",
+    "reporting",
+    "governance",
+    "audit_trail"
+  ],
+  "summary": "Basel Committee standard establishing principles for risk data aggregation and reporting capabilities. Requires banks to have strong data governance, architecture, and IT infrastructure to support effective risk management.",
+  "key_requirements": [
+    {
+      "id": "BCBS239-P1",
+      "title": "Principle 1: Governance",
+      "description": "Board and senior management must ensure strong governance and infrastructure for risk data aggregation and reporting",
+      "mandatory": true
+    },
+    {
+      "id": "BCBS239-P2",
+      "title": "Principle 2: Data architecture and IT infrastructure",
+      "description": "Bank must design, build and maintain data architecture and IT infrastructure to support risk data aggregation",
+      "mandatory": true
+    },
+    {
+      "id": "BCBS239-P3",
+      "title": "Principle 3: Accuracy and Integrity",
+      "description": "Risk data must be accurate and reliable with reconciliation processes and validation controls",
+      "mandatory": true
+    },
+    {
+      "id": "BCBS239-P4",
+      "title": "Principle 4: Completeness",
+      "description": "Risk data must capture all material risk exposures and positions",
+      "mandatory": true
+    },
+    {
+      "id": "BCBS239-P5",
+      "title": "Principle 5: Timeliness",
+      "description": "Risk data must be available in time to support risk management decisions",
+      "mandatory": true
+    },
+    {
+      "id": "BCBS239-P6",
+      "title": "Principle 6: Adaptability",
+      "description": "Risk data aggregation capabilities must be flexible to meet ad-hoc requests",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "data_model",
+      "description": "Implement unified data model with clear lineage and reconciliation points",
+      "priority": "critical"
+    },
+    {
+      "area": "data_model",
+      "description": "Build automated data quality checks, validation rules, and reconciliation processes",
+      "priority": "critical"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Maintain complete audit trail of data transformations and aggregations",
+      "priority": "critical"
+    },
+    {
+      "area": "architecture",
+      "description": "Design scalable, flexible architecture supporting ad-hoc queries and stress scenarios",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "official_text",
+      "url": "https://www.bis.org/publ/bcbs239.htm",
+      "citation": "BCBS 239: Principles for effective risk data aggregation and risk reporting",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

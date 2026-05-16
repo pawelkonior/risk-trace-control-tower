@@ -1,0 +1,74 @@
+{
+  "id": "EBA_REPORTING_4",
+  "title": "EBA Reporting Framework 4.0",
+  "type": "framework",
+  "jurisdiction": "EU",
+  "status": "active",
+  "as_of": "2024-12-31T00:00:00.000Z",
+  "applies_to": ["credit_institution", "investment_firm"],
+  "domains": ["reporting", "data_quality", "audit_trail"],
+  "summary": "European Banking Authority's comprehensive reporting framework defining data point models, validation rules, and submission requirements for supervisory reporting including COREP, FINREP, and other regulatory templates.",
+  "key_requirements": [
+    {
+      "id": "EBA-DPM-4.0",
+      "title": "Data Point Model 4.0",
+      "description": "Standardized data dictionary and taxonomy for all regulatory reporting",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-XBRL",
+      "title": "XBRL taxonomy compliance",
+      "description": "Reports must be submitted in XBRL format following EBA taxonomy",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-VALIDATION",
+      "title": "Validation rules",
+      "description": "All reports must pass EBA-defined validation rules before submission",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-FREQUENCY",
+      "title": "Reporting frequency",
+      "description": "Quarterly, semi-annual, and annual reporting cycles depending on template",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "reporting",
+      "description": "Implement XBRL generation engine with EBA taxonomy support",
+      "priority": "critical"
+    },
+    {
+      "area": "data_model",
+      "description": "Map internal data model to EBA Data Point Model",
+      "priority": "critical"
+    },
+    {
+      "area": "data_quality",
+      "description": "Implement all EBA validation rules as pre-submission checks",
+      "priority": "critical"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Track all report generation, validation, and submission events",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "technical_standard",
+      "url": "https://www.eba.europa.eu/risk-analysis-and-data/reporting-frameworks",
+      "citation": "EBA Reporting Framework 4.0",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    },
+    {
+      "type": "guidance",
+      "url": "https://www.eba.europa.eu/risk-analysis-and-data/reporting-frameworks/reporting-guidelines",
+      "citation": "EBA Reporting Guidelines",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

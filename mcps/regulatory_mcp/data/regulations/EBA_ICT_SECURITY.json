@@ -1,0 +1,79 @@
+{
+  "id": "EBA_ICT_SECURITY",
+  "title": "EBA Guidelines on ICT and Security Risk Management",
+  "type": "guideline",
+  "jurisdiction": "EU",
+  "status": "active",
+  "as_of": "2020-11-29T00:00:00.000Z",
+  "applies_to": ["credit_institution", "investment_firm"],
+  "domains": [
+    "ict_security",
+    "operational_risk",
+    "governance",
+    "data_protection"
+  ],
+  "summary": "EBA guidelines establishing requirements for ICT and security risk management in financial institutions. Covers governance, ICT risk management framework, ICT operations, ICT project management, and information security.",
+  "key_requirements": [
+    {
+      "id": "EBA-ICT-GOV",
+      "title": "ICT governance and strategy",
+      "description": "Management body must approve and oversee ICT strategy and risk management framework",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-ICT-RISK",
+      "title": "ICT risk management framework",
+      "description": "Comprehensive framework covering identification, assessment, mitigation, and monitoring of ICT risks",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-ICT-SEC",
+      "title": "Information security",
+      "description": "Implement security controls for confidentiality, integrity, and availability of data and systems",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-ICT-CHANGE",
+      "title": "ICT change management",
+      "description": "Formal change management process with testing, approval, and rollback procedures",
+      "mandatory": true
+    },
+    {
+      "id": "EBA-ICT-INCIDENT",
+      "title": "ICT incident management",
+      "description": "Process for detecting, logging, analyzing, and responding to ICT incidents",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "security",
+      "description": "Implement access controls, encryption, and security monitoring",
+      "priority": "critical"
+    },
+    {
+      "area": "testing",
+      "description": "Establish comprehensive testing procedures for all changes",
+      "priority": "high"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Log all security events, access attempts, and system changes",
+      "priority": "critical"
+    },
+    {
+      "area": "architecture",
+      "description": "Design secure architecture with defense-in-depth principles",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "guidance",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/internal-governance/guidelines-on-ict-and-security-risk-management",
+      "citation": "EBA/GL/2019/04 - Guidelines on ICT and security risk management",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

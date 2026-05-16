@@ -1,0 +1,19 @@
+{
+  "description": "Maps regulatory domains to relevant regulations",
+  "mappings": {
+    "capital_adequacy": ["CRR3", "BCBS239"],
+    "credit_risk": ["CRR3", "BCBS239"],
+    "market_risk": ["CRR3"],
+    "operational_risk": ["CRR3", "DORA", "EBA_ICT_SECURITY"],
+    "liquidity_risk": ["CRR3"],
+    "data_quality": ["BCBS239", "EBA_REPORTING_4", "INTERNAL_RULE_GOVERNANCE"],
+    "reporting": ["CRR3", "EBA_REPORTING_4", "BCBS239"],
+    "audit_trail": ["BCBS239", "INTERNAL_AUDIT_EVIDENCE", "INTERNAL_RULE_GOVERNANCE"],
+    "ict_security": ["DORA", "EBA_ICT_SECURITY", "GDPR"],
+    "data_protection": ["GDPR", "EBA_ICT_SECURITY"],
+    "governance": ["BCBS239", "DORA", "INTERNAL_SDLC", "INTERNAL_RULE_GOVERNANCE", "INTERNAL_AUDIT_EVIDENCE"],
+    "testing": ["DORA", "INTERNAL_SDLC"],
+    "architecture": ["BCBS239", "INTERNAL_SDLC"],
+    "performance": ["BCBS239"]
+  }
+}

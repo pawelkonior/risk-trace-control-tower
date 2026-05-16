@@ -1,0 +1,123 @@
+{
+  "id": "RWA-CALC-001",
+  "title": "RWA Calculation Accuracy and Traceability",
+  "description": "Ensure all RWA calculations are accurate, deterministic, and fully traceable with complete audit trail of inputs, parameters, and intermediate results.",
+  "severity": "critical",
+  "domains": ["capital_adequacy", "credit_risk", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "CRR3",
+      "article": "Article 143",
+      "requirement_id": "CRR3-ART-143",
+      "rationale": "Standardized approach requires accurate calculation of risk-weighted exposure amounts"
+    },
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P3",
+      "rationale": "Risk data must be accurate and reliable with validation controls"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "test_result",
+      "description": "Golden regression test results showing calculation accuracy",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "calculation_trace",
+      "description": "Complete calculation trace for sample exposures",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "audit_log",
+      "description": "Audit log of all calculation executions",
+      "required_for_release": false,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-CALC-001-AC1",
+      "description": "All golden test cases pass with 100% accuracy",
+      "verification_method": "automated_test",
+      "pass_threshold": "100% pass rate"
+    },
+    {
+      "id": "RWA-CALC-001-AC2",
+      "description": "Calculation results are deterministic (same inputs produce same outputs)",
+      "verification_method": "automated_test"
+    },
+    {
+      "id": "RWA-CALC-001-AC3",
+      "description": "Complete audit trail exists for every calculation",
+      "verification_method": "audit_review"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-CALC-001-TO1",
+      "description": "Golden regression test suite covering all exposure classes",
+      "test_type": "regression_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    },
+    {
+      "id": "RWA-CALC-001-TO2",
+      "description": "Determinism test running same calculation 100 times",
+      "test_type": "integration_test",
+      "frequency": "per_release",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "code_pattern",
+      "description": "Use Decimal type for all monetary calculations to avoid floating-point errors",
+      "example": "from decimal import Decimal; rwa = Decimal('1000.00') * Decimal('0.5')"
+    },
+    {
+      "category": "architecture",
+      "description": "Separate calculation engine from data access layer for testability"
+    },
+    {
+      "category": "tool",
+      "description": "Use pytest with golden test fixtures for regression testing"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Using float for monetary calculations",
+      "risk": "Floating-point arithmetic can introduce rounding errors that violate regulatory accuracy requirements",
+      "alternative": "Use Decimal type with explicit rounding to required precision"
+    },
+    {
+      "description": "Modifying calculation logic without updating golden tests",
+      "risk": "Changes may introduce errors that go undetected",
+      "alternative": "Always update golden tests when calculation logic changes and document the reason"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Golden regression tests fail",
+      "description": "Block merge if any golden test fails",
+      "automated": true
+    },
+    {
+      "action_type": "require_review",
+      "trigger_condition": "Calculation logic changes detected",
+      "description": "Require review from risk management team",
+      "automated": true
+    }
+  ],
+  "tags": ["rwa", "calculation", "accuracy", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}
