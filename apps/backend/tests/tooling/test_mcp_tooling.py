@@ -54,12 +54,11 @@ def test_generate_config_skips_sonatype_without_token(tmp_path: Path) -> None:
     export_text = (tmp_path / ".mcp" / "local" / "mcp-env.sh").read_text(encoding="utf-8")
     bob_zap = bob_config["mcpServers"]["owaspZap"]
     vscode_zap = vscode_config["servers"]["owaspZap"]
-    assert bob_zap["type"] == "streamable-http"
-    assert bob_zap["url"] == zap_env["ZAP_MCP_URL"]
-    assert bob_zap["headers"]["Authorization"] == "${env:ZAP_MCP_SECURITY_KEY}"
+    assert bob_zap["command"] == ".mcp/scripts/run-zap-mcp.sh"
+    assert bob_zap["env"]["ZAP_MCP_ENV_FILE"] == str(tmp_path / ".mcp" / "local" / "zap-mcp.env")
     assert zap_env["ZAP_MCP_SECURITY_KEY"] not in json.dumps(bob_config)
     assert f"export ZAP_MCP_SECURITY_KEY='{zap_env['ZAP_MCP_SECURITY_KEY']}'" in export_text
-    assert "command" not in bob_zap
+    assert "headers" not in bob_zap
     assert vscode_zap["type"] == "http"
     assert vscode_zap["url"] == zap_env["ZAP_MCP_URL"]
     assert vscode_zap["headers"]["Authorization"] == "${env:ZAP_MCP_SECURITY_KEY}"
@@ -87,10 +86,10 @@ def test_generate_config_references_available_tokens_without_writing_values(
     assert "risktrace-sonarqube" in bob_config["mcpServers"]
     assert "owaspZap" in bob_config["mcpServers"]
     assert "sonatype-guide" in bob_config["mcpServers"]
-    assert bob_config["mcpServers"]["owaspZap"]["type"] == "streamable-http"
+    assert bob_config["mcpServers"]["owaspZap"]["command"] == ".mcp/scripts/run-zap-mcp.sh"
     assert "${env:SONARQUBE_TOKEN}" in bob_text
     assert "${env:SONATYPE_GUIDE_MCP_TOKEN}" in bob_text
-    assert "${env:ZAP_MCP_SECURITY_KEY}" in bob_text
+    assert "${env:ZAP_MCP_SECURITY_KEY}" not in bob_text
     for secret_value in env.values():
         if secret_value.startswith("http://"):
             continue

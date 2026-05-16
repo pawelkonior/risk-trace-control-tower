@@ -166,9 +166,7 @@ def ensure_local_env(repo_root: Path, env: Mapping[str, str]) -> list[str]:
     compose_values = read_env_file(compose_path)
     zap_port = env.get("ZAP_PORT") or compose_values.get("ZAP_PORT", DEFAULT_ZAP_PORT)
     zap_mcp_port = (
-        env.get("ZAP_MCP_PORT")
-        or existing_zap_values.get("ZAP_MCP_PORT")
-        or DEFAULT_ZAP_MCP_PORT
+        env.get("ZAP_MCP_PORT") or existing_zap_values.get("ZAP_MCP_PORT") or DEFAULT_ZAP_MCP_PORT
     )
     zap_status = ensure_env_file(
         zap_path,
@@ -441,6 +439,13 @@ def vscode_http_server_entry(
     }
 
 
+def zap_bridge_server_entry(repo_root: Path) -> dict[str, Any]:
+    return server_entry(
+        Path(".mcp") / "scripts" / "run-zap-mcp.sh",
+        {"ZAP_MCP_ENV_FILE": str(zap_env_path(repo_root))},
+    )
+
+
 def build_servers(
     repo_root: Path,
     env: Mapping[str, str],
@@ -475,10 +480,7 @@ def build_servers(
     )
     zap_mcp_security_key = values.get("ZAP_MCP_SECURITY_KEY")
     if is_available_secret(zap_mcp_security_key):
-        bob_servers["owaspZap"] = bob_http_server_entry(
-            zap_mcp_url,
-            {"Authorization": env_ref("ZAP_MCP_SECURITY_KEY")},
-        )
+        bob_servers["owaspZap"] = zap_bridge_server_entry(repo_root)
         vscode_servers["owaspZap"] = vscode_http_server_entry(
             zap_mcp_url,
             {"Authorization": env_ref("ZAP_MCP_SECURITY_KEY")},
@@ -550,7 +552,7 @@ def merge_server_config(
     merged[server_key] = merged_servers
     merged["_risktrace"] = {
         "generatedBy": ".mcp/scripts/generate-mcp-config.sh",
-        "secretPolicy": "MCP config uses environment variable references only.",
+        "secretPolicy": "MCP config uses environment references and local launcher env files only.",
     }
     return merged
 
@@ -578,7 +580,8 @@ def generate_config(repo_root: Path, env: Mapping[str, str], stream: TextIO = sy
     print(f"Updated VS Code MCP config: {vscode_path.relative_to(repo_root)}", file=stream)
     print(f"Updated MCP env exports: {export_path.relative_to(repo_root)}", file=stream)
     print(
-        "IBM Bob config is safe to commit; secrets are referenced through environment variables.",
+        "IBM Bob config is safe to commit; secrets are loaded through env references "
+        "or local launcher env files.",
         file=stream,
     )
     print("VS Code MCP config remains local-only and ignored by git.", file=stream)

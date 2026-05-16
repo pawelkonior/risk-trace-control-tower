@@ -120,12 +120,12 @@ Generated client files:
 The generator merges these files instead of replacing them wholesale. Existing non-RiskTrace MCP
 servers stay in place; RiskTrace entries are refreshed.
 
-SonarQube and Sonatype Guide use launcher scripts and environment references. The OWASP ZAP entry
-points directly at the official ZAP MCP add-on HTTP endpoint running inside the ZAP daemon. Its
-`Authorization` header references `ZAP_MCP_SECURITY_KEY` from the environment; the secret value is
-not written to `.bob/mcp.json`.
+SonarQube, OWASP ZAP, and Sonatype Guide use launcher scripts for IBM Bob. The OWASP ZAP launcher
+bridges Bob's stdio MCP process to the official ZAP MCP add-on HTTP endpoint running inside the ZAP
+daemon, and reads `ZAP_MCP_SECURITY_KEY` from `.mcp/local/zap-mcp.env`. The secret value is not
+written to `.bob/mcp.json`.
 
-Before launching IBM Bob from a shell, load the local ZAP MCP key:
+If you want to use direct HTTP clients, load the local ZAP MCP key:
 
 ```bash
 set -a
@@ -142,8 +142,10 @@ source .mcp/scripts/generate-mcp-config.sh
 ```
 
 That regenerates `.bob/mcp.json`, writes `.mcp/local/mcp-env.sh`, and exports the MCP environment
-variables into the current shell immediately. A normal executed script cannot mutate its parent
-shell, so sourced mode is the automatic export path.
+variables into the current shell immediately. IBM Bob's ZAP bridge can also read the key directly
+from `.mcp/local/zap-mcp.env`, so desktop-launched Bob does not need `ZAP_MCP_SECURITY_KEY` in its
+global environment. A normal executed script cannot mutate its parent shell, so sourced mode is the
+automatic export path for clients that do need environment variables.
 
 You can also run any command with the generated MCP environment loaded:
 
@@ -174,8 +176,9 @@ SonarQube and OWASP ZAP configuration are still generated when their prerequisit
 
 - SonarQube MCP uses Docker to run the `mcp/sonarqube` image.
 - OWASP ZAP MCP is provided by the official ZAP MCP Integration add-on installed inside the ZAP
-  container. No extra local runtime, global tool, or separate ZAP MCP process is required.
-- Sonatype Guide MCP uses `npx -y mcp-remote` from the launcher script.
+  container. IBM Bob reaches it through a local stdio bridge, but no separate ZAP MCP server
+  process is required.
+- OWASP ZAP and Sonatype Guide MCP use `npx -y mcp-remote` from launcher scripts.
 
 ## Stop Local Tooling
 
