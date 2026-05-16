@@ -1,4 +1,6 @@
 .DS_Store
+__pycache__/
+.pytest_cache/
 
 
 .vscode
@@ -6,6 +8,13 @@
 
 # infra
 **/.terraform/
-  **/.terraform.lock.hcl
-  *.tfstate
-  *.tfstate.backup
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+
+# Local MCP secrets and editor-specific MCP files. Shared MCP tooling lives under .mcp.
+.mcp/generated/
+.mcp/local/
+.mcp/.env
+.mcp/.env.*
+!.mcp/.env.example

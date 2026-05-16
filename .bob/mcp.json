@@ -1,0 +1,41 @@
+{
+  "_risktrace": {
+    "generatedBy": ".mcp/scripts/generate-mcp-config.sh",
+    "secretPolicy": "MCP config uses environment variable references only."
+  },
+  "mcpServers": {
+    "atlassian": {
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.atlassian.com/v1/mcp",
+        "--transport",
+        "http-first"
+      ],
+      "command": "npx"
+    },
+    "owaspZap": {
+      "alwaysAllow": [],
+      "disabled": false,
+      "headers": {
+        "Authorization": "${env:ZAP_MCP_SECURITY_KEY}"
+      },
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8282"
+    },
+    "risktrace-sonarqube": {
+      "command": ".mcp/scripts/run-sonarqube-mcp.sh",
+      "env": {
+        "SONARQUBE_MCP_ENV_FILE": "/home/cezary/projects/risk-trace-control-tower/.mcp/local/sonarqube-mcp.env",
+        "SONARQUBE_TOKEN": "${env:SONARQUBE_TOKEN}",
+        "SONARQUBE_URL": "http://127.0.0.1:9000"
+      }
+    },
+    "sonatype-guide": {
+      "command": ".mcp/scripts/run-sonatype-guide-mcp.sh",
+      "env": {
+        "SONATYPE_GUIDE_MCP_TOKEN": "${env:SONATYPE_GUIDE_MCP_TOKEN}"
+      }
+    }
+  }
+}
