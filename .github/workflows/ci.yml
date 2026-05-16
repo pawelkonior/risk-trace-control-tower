@@ -20,6 +20,8 @@ jobs:
         working-directory: apps/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -30,7 +32,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run ruff check . --output-format=json > ruff-report.json || uv run ruff check .
 
       - name: Ruff format check
         run: uv run ruff format --check .
@@ -39,18 +41,161 @@ jobs:
         run: uv run mypy src/ --ignore-missing-imports
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=xml
+        run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term
 
-      - name: Upload coverage
+      - name: Upload test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: backend-coverage
-          path: apps/backend/coverage.xml
+          name: backend-test-reports
+          path: |
+            apps/backend/coverage.xml
+            apps/backend/ruff-report.json
+            apps/backend/bandit-report.json
+
+  sonarqube:
+    name: SonarQube analysis
+    runs-on: ubuntu-latest
+    needs: backend-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-test-reports
+          path: apps/backend/
+
+      - name: Bandit SAST (for SonarQube import)
+        run: |
+          pip install bandit
+          bandit -r apps/backend/src/ -ll -f json -o apps/backend/bandit-report.json || true
+
+      - name: SonarQube scan
+        uses: sonarsource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.python.coverage.reportPaths=apps/backend/coverage.xml
+            -Dsonar.python.bandit.reportPaths=apps/backend/bandit-report.json
+            -Dsonar.python.ruff.reportPaths=apps/backend/ruff-report.json
+
+      - name: SonarQube Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  sonatype-nexus-iq:
+    name: Sonatype Nexus IQ — OSS component analysis
+    runs-on: ubuntu-latest
+    needs: backend-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Export dependency manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      - name: Sonatype Nexus IQ scan
+        uses: sonatype-nexus-community/nexus-iq-github-action@main
+        with:
+          serverUrl: ${{ secrets.NEXUS_IQ_URL }}
+          username: ${{ secrets.NEXUS_IQ_USERNAME }}
+          password: ${{ secrets.NEXUS_IQ_PASSWORD }}
+          applicationId: risk-trace-control-tower
+          stage: BUILD
+          target: apps/backend/requirements.txt
+
+  owasp-dependency-check:
+    name: OWASP Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Export dependency manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "risk-trace-control-tower"
+          path: "apps/backend"
+          format: "ALL"
+          out: "owasp-reports"
+          args: >
+            --enableRetired
+            --failOnCVSS 7
+            --suppression .github/owasp-suppressions.xml
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dependency-check-report
+          path: owasp-reports/
+
+  sast:
+    name: SAST — Semgrep + Bandit + secrets scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/owasp-top-ten
+            p/secrets
+            p/django
+            p/flask
+            p/fastapi
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Bandit
+        run: |
+          pip install bandit
+          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json || true
+          bandit -r apps/backend/src/ -ll
+
+      - name: TruffleHog secrets scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: .
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   backend-build:
     name: Backend — Docker build + push
     runs-on: ubuntu-latest
-    needs: [backend-test, sast]
+    needs: [backend-test, sast, sonarqube, owasp-dependency-check]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')
     permissions:
       id-token: write
@@ -76,8 +221,12 @@ jobs:
           tags: ${{ env.REGISTRY }}/backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            git.commit=${{ github.sha }}
+            git.branch=${{ github.ref_name }}
+            build.run=${{ github.run_id }}
 
-      - name: Trivy image scan
+      - name: Trivy image scan — fail on CRITICAL
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/backend:${{ github.sha }}
@@ -86,7 +235,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-      - name: Generate SBOM
+      - name: Generate SBOM (CycloneDX)
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
@@ -128,8 +277,12 @@ jobs:
           tags: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            git.commit=${{ github.sha }}
+            git.branch=${{ github.ref_name }}
+            build.run=${{ github.run_id }}
 
-      - name: Trivy image scan
+      - name: Trivy image scan — fail on CRITICAL
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
@@ -138,7 +291,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-      - name: Generate SBOM
+      - name: Generate SBOM (CycloneDX)
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
@@ -151,40 +304,8 @@ jobs:
           name: sbom-frontend
           path: sbom-frontend.cdx.json
 
-  sast:
-    name: SAST — Semgrep + Bandit + secrets scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/python p/owasp-top-ten p/secrets
-
-      - name: Bandit
-        run: |
-          pip install bandit
-          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json || true
-          bandit -r apps/backend/src/ -ll
-
-      - name: TruffleHog secrets scan
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: .
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --only-verified
-
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   health-check-verify:
-    name: Verify health endpoint contract
+    name: Verify /v1/health contract
     runs-on: ubuntu-latest
     needs: backend-build
     if: github.ref == 'refs/heads/main'

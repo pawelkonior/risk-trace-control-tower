@@ -1,4 +1,4 @@
-name: Security Gates — DAST
+name: Security Gates — DAST + Performance
 
 on:
   schedule:
@@ -6,16 +6,20 @@ on:
   workflow_dispatch:
     inputs:
       target_url:
-        description: "Target URL for ZAP scan"
+        description: "Target URL (default: staging)"
         required: false
         default: ""
+      run_stress:
+        description: "Run stress test (true/false)"
+        required: false
+        default: "false"
 
 env:
   STAGING_URL: ${{ secrets.STAGING_URL }}
 
 jobs:
   zap-baseline:
-    name: ZAP baseline scan
+    name: OWASP ZAP — baseline scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +34,7 @@ jobs:
             -z "-config scanner.threadPerHost=5"
           fail_action: true
 
-      - name: Upload ZAP report
+      - name: Upload ZAP baseline report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -38,7 +42,7 @@ jobs:
           path: report_html.html
 
   zap-active:
-    name: ZAP active scan
+    name: OWASP ZAP — active scan
     runs-on: ubuntu-latest
     needs: zap-baseline
     environment: staging
@@ -61,8 +65,117 @@ jobs:
           name: zap-active-report
           path: report_html.html
 
+  k6-smoke:
+    name: k6 — smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: k6 smoke test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6/smoke-test.js
+          flags: --out json=k6-smoke-results.json
+        env:
+          TARGET_URL: ${{ inputs.target_url || env.STAGING_URL }}
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-smoke-results
+          path: |
+            k6-smoke-results.json
+            k6-smoke-summary.json
+
+  k6-load:
+    name: k6 — load test (SLO gate)
+    runs-on: ubuntu-latest
+    needs: k6-smoke
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6/load-test.js
+          flags: >-
+            --out json=k6-load-results.json
+            --out influxdb=${{ secrets.K6_INFLUXDB_URL }}
+        env:
+          TARGET_URL: ${{ inputs.target_url || env.STAGING_URL }}
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      - name: Validate SLO thresholds
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+
+          with open("k6-load-summary.json") as f:
+              data = json.load(f)
+
+          metrics = data.get("metrics", {})
+          p95 = metrics.get("http_req_duration", {}).get("values", {}).get("p(95)", 0)
+          error_rate = metrics.get("http_req_failed", {}).get("values", {}).get("rate", 1)
+
+          print(f"p(95) latency: {p95:.2f}ms (SLO: <2000ms)")
+          print(f"Error rate:    {error_rate*100:.3f}% (SLO: <1%)")
+
+          failures = []
+          if p95 > 2000:
+              failures.append(f"p95 {p95:.0f}ms exceeds 2000ms SLO")
+          if error_rate > 0.01:
+              failures.append(f"Error rate {error_rate*100:.2f}% exceeds 1% SLO")
+
+          if failures:
+              print("\nSLO VIOLATIONS:")
+              for f in failures:
+                  print(f"  - {f}")
+              sys.exit(1)
+          else:
+              print("\nAll SLO thresholds met.")
+          EOF
+
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-results
+          path: |
+            k6-load-results.json
+            k6-load-summary.json
+
+  k6-stress:
+    name: k6 — stress test (breaking point)
+    runs-on: ubuntu-latest
+    needs: k6-load
+    if: inputs.run_stress == 'true'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: k6 stress test
+        uses: grafana/k6-action@v0.3.1
+        continue-on-error: true
+        with:
+          filename: k6/stress-test.js
+          flags: --out json=k6-stress-results.json
+        env:
+          TARGET_URL: ${{ inputs.target_url || env.STAGING_URL }}
+
+      - name: Upload stress test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-stress-results
+          path: |
+            k6-stress-results.json
+            k6-stress-summary.json
+
   dependency-audit:
-    name: Dependency vulnerability audit
+    name: Dependency audit — pip-audit + OWASP DC
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,23 +183,40 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
+      - name: Export manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
       - name: pip-audit
         working-directory: apps/backend
         run: |
-          uv pip compile pyproject.toml -o requirements.txt
           pip install pip-audit
           pip-audit -r requirements.txt --format json -o pip-audit.json
           pip-audit -r requirements.txt
 
-      - name: Upload pip-audit report
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "risk-trace-control-tower"
+          path: "apps/backend"
+          format: "HTML,JSON"
+          out: "owasp-reports"
+          args: >
+            --enableRetired
+            --failOnCVSS 7
+            --suppression .github/owasp-suppressions.xml
+
+      - name: Upload dependency reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pip-audit-report
-          path: apps/backend/pip-audit.json
+          name: dependency-audit-reports
+          path: |
+            apps/backend/pip-audit.json
+            owasp-reports/
 
   container-scan:
-    name: Container vulnerability scan
+    name: Trivy — container scan (HIGH+CRITICAL)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -103,7 +233,7 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Trivy scan — backend (HIGH+CRITICAL fail)
+      - name: Trivy scan — backend
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.ECR_REGISTRY }}/backend:${{ github.sha }}
@@ -111,7 +241,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
 
-      - name: Trivy scan — frontend (HIGH+CRITICAL fail)
+      - name: Trivy scan — frontend
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.ECR_REGISTRY }}/frontend:${{ github.sha }}

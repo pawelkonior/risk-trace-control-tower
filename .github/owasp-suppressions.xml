@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+        Add CVE suppressions here for accepted risks or false positives.
+        Each suppression must have a documented justification and expiry date.
+        Format:
+            <suppress until="YYYY-MM-DD">
+                <notes>Justification. Reviewed by: Name. JIRA: RCT-XXX</notes>
+                <cve>CVE-XXXX-XXXXX</cve>
+            </suppress>
+    -->
+</suppressions>
