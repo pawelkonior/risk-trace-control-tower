@@ -1,0 +1,151 @@
+groups:
+  - name: rwa.application
+    interval: 30s
+    rules:
+      - alert: RWACalculationSLOBreach
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{
+              job="rwa-calculator",
+              handler=~"/v1/.*"
+            }[5m])) by (le)
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: critical
+          team: rwa
+        annotations:
+          summary: "RWA calculation p95 latency SLO breach"
+          description: "p95 latency {{ $value | humanizeDuration }} exceeds 2s SLO for 5m"
+          runbook: "https://wiki.internal/runbooks/rwa-latency"
+
+      - alert: RWACalculationErrorRate
+        expr: |
+          sum(rate(http_requests_total{
+            job="rwa-calculator",
+            status=~"5.."
+          }[5m])) /
+          sum(rate(http_requests_total{job="rwa-calculator"}[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          team: rwa
+        annotations:
+          summary: "RWA API error rate above 1%"
+          description: "Error rate {{ $value | humanizePercentage }} for 5m"
+
+      - alert: DBConnectionPoolExhausted
+        expr: |
+          pg_stat_activity_count{state="active", datname="rwa_steering"}
+          / pg_settings_max_connections > 0.80
+        for: 2m
+        labels:
+          severity: critical
+          team: rwa
+        annotations:
+          summary: "PostgreSQL connection pool >80% utilized"
+          description: "{{ $value | humanizePercentage }} of max_connections in use"
+          runbook: "https://wiki.internal/runbooks/db-connections"
+
+      - alert: RWABackendDown
+        expr: |
+          up{job="rwa-calculator"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: rwa
+          page: "true"
+        annotations:
+          summary: "RWA backend unreachable"
+          description: "rwa-calculator scrape target down for 1m"
+
+      - alert: RWAPodCrashLooping
+        expr: |
+          increase(kube_pod_container_status_restarts_total{
+            namespace=~"rwa-.*"
+          }[15m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          team: rwa
+        annotations:
+          summary: "Pod {{ $labels.pod }} crash-looping in {{ $labels.namespace }}"
+          description: "{{ $value }} restarts in 15m"
+
+      - alert: RWAPodNotReady
+        expr: |
+          kube_pod_status_ready{
+            namespace=~"rwa-.*",
+            condition="true"
+          } == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: rwa
+        annotations:
+          summary: "Pod {{ $labels.pod }} not ready"
+
+  - name: rwa.slo-burn-rate
+    rules:
+      - alert: RWASLOFastBurn
+        expr: |
+          (
+            sum(rate(http_request_duration_seconds_bucket{
+              job="rwa-calculator", le="2.0"
+            }[1h])) /
+            sum(rate(http_request_duration_seconds_count{job="rwa-calculator"}[1h]))
+          ) < 0.99 * 14.4
+        for: 2m
+        labels:
+          severity: critical
+          team: rwa
+          slo: latency
+        annotations:
+          summary: "RWA SLO fast burn rate — action required"
+          description: "Burning error budget 14.4× faster than sustainable"
+
+      - alert: RWASLOSlowBurn
+        expr: |
+          (
+            sum(rate(http_request_duration_seconds_bucket{
+              job="rwa-calculator", le="2.0"
+            }[6h])) /
+            sum(rate(http_request_duration_seconds_count{job="rwa-calculator"}[6h]))
+          ) < 0.99 * 6
+        for: 15m
+        labels:
+          severity: warning
+          team: rwa
+          slo: latency
+        annotations:
+          summary: "RWA SLO slow burn rate — investigate"
+          description: "Burning error budget 6× faster than sustainable"
+
+  - name: rwa.regulatory
+    rules:
+      - alert: KafkaAuditConsumerLagCritical
+        expr: |
+          kafka_consumer_group_lag{
+            topic="rwa.audit.events"
+          } > 100
+        for: 5m
+        labels:
+          severity: critical
+          team: rwa
+          regulatory: bcbs239-dora
+        annotations:
+          summary: "Audit event consumer lag critical — EBA GL requirement"
+          description: "Consumer lag {{ $value }} on rwa.audit.events exceeds 100 (EBA GL 2021/02 §47)"
+          runbook: "https://wiki.internal/runbooks/kafka-audit-lag"
+
+      - alert: KafkaAuditTopicUnavailable
+        expr: |
+          kafka_topic_partition_leader{topic="rwa.audit.events"} < 0
+        for: 1m
+        labels:
+          severity: critical
+          team: rwa
+          regulatory: bcbs239-dora
+        annotations:
+          summary: "Audit topic leader election failure — regulatory impact"
+          description: "rwa.audit.events has no leader — audit trail at risk"

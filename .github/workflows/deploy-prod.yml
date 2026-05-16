@@ -1,0 +1,112 @@
+name: Deploy — prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image SHA tag to deploy (e.g. sha-abc1234)"
+        required: true
+        type: string
+      confirm:
+        description: "Type DEPLOY to confirm production deployment"
+        required: true
+        type: string
+
+env:
+  ENVIRONMENT: prod
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  CLUSTER_NAME: rwa-control-tower-prod
+  NAMESPACE: rwa-prod
+  REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  EVIDENCE_BUCKET: ${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}
+
+jobs:
+  pre-flight:
+    name: Pre-flight checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "Confirmation string must be exactly 'DEPLOY'"
+            exit 1
+          fi
+
+  deploy-prod:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      # required-reviewers: 2 — configured in GitHub environment settings
+    needs: pre-flight
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Record pre-deploy state
+        id: pre-deploy
+        run: |
+          kubectl get deployment rwa-platform-rwa-backend \
+            -n ${{ env.NAMESPACE }} \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' \
+            > /tmp/pre-deploy-image.txt
+          echo "previous_image=$(cat /tmp/pre-deploy-image.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Helm dependency update
+        run: helm dependency update infra/helm/rwa-platform
+
+      - name: Helm upgrade — prod
+        run: |
+          helm upgrade --install rwa-platform infra/helm/rwa-platform \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --values infra/helm/rwa-platform/values.yaml \
+            --values infra/helm/rwa-platform/values-prod.yaml \
+            --set global.registry=${{ env.REGISTRY }} \
+            --set global.imageTag=${{ inputs.image_tag }} \
+            --timeout 15m \
+            --wait \
+            --atomic
+
+      - name: Verify backend health
+        run: |
+          kubectl rollout status deployment/rwa-platform-rwa-backend \
+            -n ${{ env.NAMESPACE }} --timeout=10m
+          kubectl run health-check --rm -i --restart=Never \
+            --image=curlimages/curl:8 \
+            -n ${{ env.NAMESPACE }} \
+            -- curl -f http://rwa-platform-rwa-backend:8000/v1/health
+
+      - name: Upload deployment evidence to S3 WORM
+        if: always()
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          cat > /tmp/deploy-evidence.json <<EOF
+          {
+            "timestamp": "${TIMESTAMP}",
+            "environment": "prod",
+            "image_tag": "${{ inputs.image_tag }}",
+            "previous_image": "${{ steps.pre-deploy.outputs.previous_image }}",
+            "deployed_by": "${{ github.actor }}",
+            "workflow_run": "${{ github.run_id }}",
+            "commit_sha": "${{ github.sha }}",
+            "outcome": "${{ job.status }}"
+          }
+          EOF
+          aws s3 cp /tmp/deploy-evidence.json \
+            s3://${{ env.EVIDENCE_BUCKET }}/deployments/prod/${TIMESTAMP}.json \
+            --no-progress

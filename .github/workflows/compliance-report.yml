@@ -1,0 +1,162 @@
+name: Compliance Report — Weekly
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  EVIDENCE_BUCKET: ${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}
+  SLACK_COMPLIANCE_WEBHOOK: ${{ secrets.SLACK_COMPLIANCE_WEBHOOK }}
+
+jobs:
+  generate-report:
+    name: Generate compliance artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_COMPLIANCE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Setup kubectl + helm
+        run: |
+          curl -sLO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          aws eks update-kubeconfig \
+            --name rwa-control-tower-prod \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Artifact 1 — SBOM (CycloneDX)
+        run: |
+          pip install cyclonedx-bom
+          cd apps/backend
+          uv sync --all-extras
+          cyclonedx-py environment --format json -o /tmp/sbom.cdx.json
+          echo "SBOM generated: /tmp/sbom.cdx.json"
+
+      - name: Artifact 2 — Dependency vulnerability report
+        run: |
+          pip install pip-audit
+          cd apps/backend
+          uv pip compile pyproject.toml -o /tmp/requirements.txt
+          pip-audit -r /tmp/requirements.txt \
+            --format json -o /tmp/vulnerability-report.json || true
+          pip-audit -r /tmp/requirements.txt \
+            --format markdown > /tmp/vulnerability-report.md || true
+
+      - name: Artifact 3 — DAST summary (ZAP)
+        run: |
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run --rm ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t ${{ secrets.STAGING_URL }} \
+            -J /tmp/zap-report.json \
+            -l WARN || true
+
+      - name: Artifact 4 — Container image manifest
+        run: |
+          pip install syft
+          syft ${{ secrets.ECR_REGISTRY }}/backend:latest \
+            -o cyclonedx-json=/tmp/container-sbom.cdx.json || true
+
+      - name: Artifact 5 — Kubernetes RBAC audit
+        run: |
+          kubectl auth can-i --list --namespace rwa-prod \
+            --as=system:serviceaccount:rwa-prod:rwa-backend \
+            > /tmp/rbac-audit.txt 2>&1 || true
+          kubectl get rolebindings,clusterrolebindings \
+            -n rwa-prod -o json > /tmp/rbac-bindings.json 2>&1 || true
+          kubectl get networkpolicies -n rwa-prod \
+            -o json > /tmp/network-policies.json 2>&1 || true
+
+      - name: Artifact 6 — Terraform state compliance snapshot
+        run: |
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          cat > /tmp/compliance-summary.json <<EOF
+          {
+            "report_date": "${REPORT_DATE}",
+            "report_week": "$(date -u +%YW%V)",
+            "framework": ["Basel III RWA", "BCBS 239", "DORA"],
+            "environments": ["prod", "staging", "dev"],
+            "artifacts": [
+              "sbom.cdx.json",
+              "vulnerability-report.json",
+              "zap-report.json",
+              "container-sbom.cdx.json",
+              "rbac-audit.txt",
+              "rbac-bindings.json",
+              "network-policies.json"
+            ],
+            "s3_retention": "COMPLIANCE 365 days",
+            "generated_by": "github-actions",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+
+      - name: Upload all artifacts to S3 WORM
+        run: |
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          S3_PREFIX="s3://${{ env.EVIDENCE_BUCKET }}/compliance-reports/${REPORT_DATE}"
+
+          for file in \
+            /tmp/sbom.cdx.json \
+            /tmp/vulnerability-report.json \
+            /tmp/vulnerability-report.md \
+            /tmp/zap-report.json \
+            /tmp/container-sbom.cdx.json \
+            /tmp/rbac-audit.txt \
+            /tmp/rbac-bindings.json \
+            /tmp/network-policies.json \
+            /tmp/compliance-summary.json; do
+            if [ -f "${file}" ]; then
+              aws s3 cp "${file}" "${S3_PREFIX}/$(basename ${file})" --no-progress
+              echo "Uploaded: $(basename ${file})"
+            else
+              echo "Skipped (not found): $(basename ${file})"
+            fi
+          done
+
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report-${{ github.run_id }}
+          path: |
+            /tmp/sbom.cdx.json
+            /tmp/vulnerability-report.json
+            /tmp/vulnerability-report.md
+            /tmp/rbac-audit.txt
+            /tmp/compliance-summary.json
+          retention-days: 90
+
+      - name: Notify Slack — compliance channel
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          curl -s -X POST "${{ env.SLACK_COMPLIANCE_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"*Weekly Compliance Report — ${REPORT_DATE}*\",
+              \"attachments\": [{
+                \"color\": \"$([ \"${STATUS}\" = 'success' ] && echo 'good' || echo 'danger')\",
+                \"fields\": [
+                  {\"title\": \"Status\", \"value\": \"${STATUS}\", \"short\": true},
+                  {\"title\": \"Framework\", \"value\": \"Basel III / BCBS 239 / DORA\", \"short\": true},
+                  {\"title\": \"Evidence S3\", \"value\": \"${REPORT_DATE}/\", \"short\": false},
+                  {\"title\": \"Run\", \"value\": \"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>\", \"short\": true}
+                ]
+              }]
+            }"

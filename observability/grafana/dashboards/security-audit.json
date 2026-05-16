@@ -1,0 +1,162 @@
+{
+  "uid": "rwa-security",
+  "title": "RWA — Security & Compliance Audit",
+  "tags": ["rwa", "security", "compliance", "bcbs239"],
+  "timezone": "utc",
+  "schemaVersion": 38,
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "OPA Policy Violations (7d)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(gatekeeper_violations_total[7d]))",
+          "legendFormat": "violations"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Failed Auth Attempts (24h)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(http_requests_total{job=\"rwa-calculator\",status=\"401\"}[24h])) + sum(increase(http_requests_total{job=\"rwa-calculator\",status=\"403\"}[24h]))",
+          "legendFormat": "auth failures"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "TLS-Only Connections",
+      "description": "100% required (Basel III / DORA)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(nginx_http_requests_total{scheme=\"https\"}) / sum(nginx_http_requests_total)",
+          "legendFormat": "TLS %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 0.99 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Privileged Container Violations",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(gatekeeper_violations_total{constraint=\"deny-privileged\"})",
+          "legendFormat": "privileged"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "OPA Violations Over Time by Constraint",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "increase(gatekeeper_violations_total[1h])",
+          "legendFormat": "{{ constraint }}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Network Policy Drops (East-West)",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "sum(rate(network_policy_dropped_packets_total{namespace=~\"rwa-.*\"}[5m])) by (namespace)",
+          "legendFormat": "{{ namespace }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps" } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Secret Access Events (External Secrets)",
+      "description": "Syncs from AWS Secrets Manager",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(externalsecret_sync_calls_total{namespace=~\"rwa-.*\"}[1h])",
+          "legendFormat": "{{ name }}"
+        },
+        {
+          "expr": "increase(externalsecret_sync_calls_error_total{namespace=~\"rwa-.*\"}[1h])",
+          "legendFormat": "errors: {{ name }}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Recent OPA Violations",
+      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "topk(20, gatekeeper_violations_total)",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "renameByName": { "constraint": "Constraint", "namespace": "Namespace", "Value": "Count" } } }
+      ]
+    }
+  ]
+}

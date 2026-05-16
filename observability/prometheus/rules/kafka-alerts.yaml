@@ -1,0 +1,100 @@
+groups:
+  - name: kafka.broker
+    interval: 30s
+    rules:
+      - alert: KafkaBrokerDown
+        expr: |
+          kafka_brokers < 3
+        for: 1m
+        labels:
+          severity: critical
+          team: rwa
+          page: "true"
+        annotations:
+          summary: "Kafka broker count below quorum ({{ $value }}/3)"
+          description: "MSK cluster has fewer than 3 healthy brokers"
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: |
+          kafka_server_replicamanager_underreplicatedpartitions > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: rwa
+        annotations:
+          summary: "Kafka under-replicated partitions: {{ $value }}"
+
+      - alert: KafkaOfflinePartitions
+        expr: |
+          kafka_controller_kafkacontroller_offlinepartitionscount > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: rwa
+          page: "true"
+        annotations:
+          summary: "Kafka offline partitions: {{ $value }}"
+          description: "Data unavailable — immediate intervention required"
+
+      - alert: KafkaActiveControllerMissing
+        expr: |
+          kafka_controller_kafkacontroller_activecontrollercount != 1
+        for: 1m
+        labels:
+          severity: critical
+          team: rwa
+          page: "true"
+        annotations:
+          summary: "No active Kafka controller"
+
+  - name: kafka.consumer-groups
+    rules:
+      - alert: KafkaConsumerLagHigh
+        expr: |
+          kafka_consumer_group_lag{
+            topic!="rwa.audit.events"
+          } > 500
+        for: 10m
+        labels:
+          severity: warning
+          team: rwa
+        annotations:
+          summary: "Consumer lag high: {{ $labels.topic }} / {{ $labels.consumergroup }}"
+          description: "Lag {{ $value }} on {{ $labels.topic }} for 10m"
+
+      - alert: KafkaConsumerGroupDead
+        expr: |
+          kafka_consumer_group_members == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: rwa
+        annotations:
+          summary: "Consumer group {{ $labels.consumergroup }} has no members"
+          description: "Topic {{ $labels.topic }} is not being consumed"
+
+  - name: kafka.storage
+    rules:
+      - alert: KafkaDiskUsageHigh
+        expr: |
+          kafka_log_log_size_value /
+          kafka_log_log_size_value offset 1w > 0.80
+        for: 15m
+        labels:
+          severity: warning
+          team: rwa
+        annotations:
+          summary: "Kafka broker disk usage >80%"
+
+      - alert: KafkaAuditTopicRetentionRisk
+        expr: |
+          kafka_log_log_size_value{topic="rwa.audit.events"} > 0
+          and
+          time() - kafka_log_log_size_value{topic="rwa.audit.events"} offset 365d < 0
+        for: 0m
+        labels:
+          severity: warning
+          team: rwa
+          regulatory: bcbs239-dora
+        annotations:
+          summary: "Audit topic retention approaching 365-day regulatory boundary"
