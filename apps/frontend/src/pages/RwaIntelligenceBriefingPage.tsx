@@ -9,6 +9,10 @@ import {
 import { EvidenceTraceabilityCard } from "../components/rwa-briefing/EvidenceTraceabilityCard";
 import { ManagementReviewPackCard } from "../components/rwa-briefing/ManagementReviewPackCard";
 import { RwaMovementAttributionCard } from "../components/rwa-briefing/RwaMovementAttributionCard";
+import {
+  AiExecutiveCommentaryCard,
+  useExecutiveCommentary,
+} from "../components/rwa-briefing/AiExecutiveCommentaryCard";
 import { AppShell } from "../components/rwa-dashboard/AppShell";
 import { PageHeader } from "../components/rwa-dashboard/PageHeader";
 import { Toast } from "../components/rwa-dashboard/Toast";
@@ -28,6 +32,7 @@ export function RwaIntelligenceBriefingPage({ onNavigate }: RwaIntelligenceBrief
   const { runAction, runExport } = useUiActions(notify);
   const briefing = useRwaBriefingData();
   const { data } = briefing;
+  const commentary = useExecutiveCommentary(data);
 
   return (
     <AppShell
@@ -66,6 +71,13 @@ export function RwaIntelligenceBriefingPage({ onNavigate }: RwaIntelligenceBrief
         {data ? (
           <>
             <BriefingKpiStrip kpis={data.kpis} />
+            <AiExecutiveCommentaryCard
+              data={data}
+              error={commentary.error}
+              isLoading={commentary.isLoading}
+              onRegenerate={commentary.regenerate}
+              response={commentary.response}
+            />
             <div className="briefing-top-grid">
               <RwaMovementAttributionCard
                 movementDrivers={data.movementAttribution.movementDrivers}

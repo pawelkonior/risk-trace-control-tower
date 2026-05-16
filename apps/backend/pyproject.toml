@@ -53,6 +53,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
+rwa_agents = ["py.typed"]
 rwa_calculator = ["*.csv", "preprod_dataset_summary.json", "*.md", "py.typed", "reference_data/**/*.json", "reference_data/**/*.md"]
 rwa_common = ["py.typed"]
 rwa_dashboard = ["py.typed"]
@@ -136,7 +137,7 @@ line-ending = "auto"
 
 [tool.mypy]
 python_version = "3.12"
-packages = ["rwa_calculator", "rwa_dashboard", "rwa_forecast_service", "rwa_projection_service", "rwa_rats_service", "rwa_steering"]
+packages = ["rwa_agents", "rwa_calculator", "rwa_dashboard", "rwa_forecast_service", "rwa_projection_service", "rwa_rats_service", "rwa_steering"]
 strict = false
 check_untyped_defs = true
 warn_return_any = false

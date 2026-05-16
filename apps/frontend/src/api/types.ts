@@ -373,6 +373,149 @@ export type BriefingSnapshot = {
   boardPack: ApiBoardPack;
 };
 
+export type RwaAnalysisStatus = "COMPLETED" | "LOOP_LIMIT_REACHED" | "BLOCKED";
+
+export type RwaAnalysisInputRecord = {
+  asset_id: string;
+  asset_class: string;
+  sector: string;
+  exposure_amount: string;
+  risk_weight?: string;
+  rating?: string;
+  pd?: string;
+  lgd?: string;
+  maturity_years?: string;
+  approach?: string;
+};
+
+export type RwaAnalysisOutputRecord = {
+  asset_id: string;
+  rwa_amount: string;
+  exposure_amount?: string;
+  risk_weight?: string;
+  approach?: string;
+};
+
+export type RwaAnalysisRequest = {
+  request_id: string;
+  loop_limit?: number;
+  materiality_threshold?: string;
+  rwa_input_data: RwaAnalysisInputRecord[];
+  rwa_output_results: RwaAnalysisOutputRecord[];
+};
+
+export type RwaAgentFinding = {
+  agent: string;
+  kind: "data_quality" | "risk" | "validation" | "guardrail" | "observability";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+  evidence: string[];
+};
+
+export type RwaValidationFlag = {
+  code: string;
+  severity: "info" | "warning" | "critical";
+  message: string;
+  asset_id?: string | null;
+  source: string;
+};
+
+export type RwaRecommendedAction = {
+  id: string;
+  label: string;
+  owner: string;
+  priority: "low" | "medium" | "high";
+  completed: boolean;
+  source_agent: string;
+};
+
+export type RwaQuantitativeValidation = {
+  asset_id: string;
+  expected_rwa_amount: string;
+  reported_rwa_amount: string;
+  variance_amount: string;
+  variance_pct: string;
+  passed: boolean;
+};
+
+export type RwaGuardrailResult = {
+  stage: string;
+  scanner: string;
+  passed: boolean;
+  blocked: boolean;
+  risk_score: number;
+  categories: string[];
+  message: string;
+};
+
+export type RwaObservability = {
+  langfuse_enabled: boolean;
+  trace_id: string | null;
+  callback_handler_attached: boolean;
+  checkpointer: string;
+  thread_id: string;
+  prompt_usages: Array<{
+    prompt_name: string;
+    prompt_version: string;
+    source: "local" | "langfuse";
+  }>;
+  evaluation_scores: Array<{
+    name: string;
+    value: number;
+    comment: string;
+  }>;
+  guardrail_results: RwaGuardrailResult[];
+  guardrail_block_count: number;
+  pii_detected: boolean;
+  prompt_injection_risk: number;
+  node_transition_count: number;
+  llm_call_count: number;
+  tool_call_count: number;
+  total_token_count: number;
+};
+
+export type RwaFinalCommentary = {
+  status: RwaAnalysisStatus;
+  consensus_reached: boolean;
+  loop_count: number;
+  generated_at: string;
+  source_label: string;
+  executive_summary: string;
+  cro_view: string;
+  cfo_view: string;
+  data_quality_observations: RwaAgentFinding[];
+  risk_observations: RwaAgentFinding[];
+  quantitative_validation: RwaQuantitativeValidation[];
+  recommended_actions: RwaRecommendedAction[];
+  validation_flags: RwaValidationFlag[];
+  source_agents: string[];
+  observability: RwaObservability | null;
+  messages: string[];
+};
+
+export type RwaCommentaryViews = {
+  executive_summary: string;
+  cro_view: string;
+  cfo_view: string;
+};
+
+export type RwaAnalysisResponse = {
+  api_version: "v1";
+  service_version: string;
+  request_id: string;
+  run_id: string;
+  status: RwaAnalysisStatus;
+  graph_backend: string;
+  final_commentary: RwaFinalCommentary;
+  messages: string[];
+  validation_flags: RwaValidationFlag[];
+  agent_findings: RwaAgentFinding[];
+  recommended_actions: RwaRecommendedAction[];
+  commentary_views: RwaCommentaryViews;
+  observability: RwaObservability;
+};
+
 export type UiActionPayload = Record<string, unknown>;
 
 export type UiActionResult = {
