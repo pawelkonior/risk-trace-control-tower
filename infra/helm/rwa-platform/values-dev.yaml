@@ -1,0 +1,13 @@
+rwa-backend:
+  replicaCount: 1
+  hpa:
+    enabled: false
+  env:
+    RWA_LOG_LEVEL: DEBUG
+    RWA_ENV: development
+    RWA_CORS_ORIGINS: "*"
+
+rwa-frontend:
+  replicaCount: 1
+  hpa:
+    enabled: false

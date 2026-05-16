@@ -1,0 +1,30 @@
+global:
+  registry: ""
+  imageTag: ""  # set via --set global.imageTag=sha-<commit> — NEVER hardcode
+
+replicaCount: 2
+
+image:
+  repository: rwa-control-tower-frontend
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80        # nginx port — NOT 3000 or 5173
+  targetPort: 80
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# No NEXT_PUBLIC_* env vars — Vite bakes API URL at build time

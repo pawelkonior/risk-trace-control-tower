@@ -1,0 +1,30 @@
+# global.registry and global.imageTag MUST be set via --set at deploy time.
+# Never hardcode these values.
+# Example: helm upgrade --install rwa-platform ./rwa-platform \
+#   --set global.registry=<account>.dkr.ecr.eu-west-1.amazonaws.com \
+#   --set global.imageTag=sha-abc1234
+global:
+  registry: ""
+  imageTag: ""
+
+rwa-backend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    minAvailable: 1
+  env:
+    RWA_LOG_LEVEL: INFO
+    RWA_ENV: production
+    RWA_CORS_ORIGINS: "*"
+
+rwa-frontend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70

@@ -1,0 +1,19 @@
+rwa-backend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+  pdb:
+    minAvailable: 1
+  env:
+    RWA_LOG_LEVEL: WARNING
+    RWA_ENV: production
+    RWA_CORS_ORIGINS: "https://<YOUR_DOMAIN>"
+
+rwa-frontend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
