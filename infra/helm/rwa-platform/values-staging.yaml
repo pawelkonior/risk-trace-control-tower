@@ -1,0 +1,17 @@
+rwa-backend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+  env:
+    RWA_LOG_LEVEL: INFO
+    RWA_ENV: staging
+    RWA_CORS_ORIGINS: "*"
+
+rwa-frontend:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6

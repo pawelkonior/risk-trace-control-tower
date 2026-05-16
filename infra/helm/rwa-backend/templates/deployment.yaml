@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rwa-backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "rwa-backend.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "rwa-backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rwa-backend.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: rwa-backend
+        image: "{{ .Values.global.registry }}/{{ .Values.image.repository }}:{{ .Values.global.imageTag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        # Secrets from External Secrets Operator — RWA_DATABASE_URL, REDIS_URL, KAFKA_USERNAME, KAFKA_PASSWORD
+        envFrom:
+        - secretRef:
+            name: backend-secrets
+        env:
+        - name: RWA_CORS_ORIGINS
+          value: {{ .Values.env.RWA_CORS_ORIGINS | quote }}
+        - name: RWA_LOG_LEVEL
+          value: {{ .Values.env.RWA_LOG_LEVEL | quote }}
+        - name: RWA_ENV
+          value: {{ .Values.env.RWA_ENV | quote }}
+        livenessProbe:
+          httpGet:
+            path: /v1/health  # NOT /health — that is frontend only
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /v1/health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: {{ .Values.resources.requests.cpu }}
+            memory: {{ .Values.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.resources.limits.cpu }}
+            memory: {{ .Values.resources.limits.memory }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

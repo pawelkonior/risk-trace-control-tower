@@ -1,0 +1,13 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: DenyLatestTag
+metadata:
+  name: deny-latest-tag
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+    - apiGroups: [""]
+      kinds: ["Pod"]
+    namespaces:
+    - rwa-prod
+    - rwa-dev

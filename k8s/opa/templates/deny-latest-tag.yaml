@@ -1,0 +1,40 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: denylatesttag
+  annotations:
+    description: "Deny :latest tag and empty image tag. Checks spec.containers and spec.initContainers. sha- prefix is allowed."
+spec:
+  crd:
+    spec:
+      names:
+        kind: DenyLatestTag
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package denylatestag
+
+      violation[{"msg": msg}] {
+        container := input_containers[_]
+        invalid_tag(container.image)
+        msg := sprintf("Container '%v' image '%v': tag ':latest' and empty tag are forbidden. Use an immutable sha- prefixed digest tag.", [container.name, container.image])
+      }
+
+      # No colon = no tag at all
+      invalid_tag(image) {
+        not contains(image, ":")
+        not contains(image, "@")
+      }
+
+      # Explicit :latest
+      invalid_tag(image) {
+        endswith(image, ":latest")
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.containers[_]
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.initContainers[_]
+      }

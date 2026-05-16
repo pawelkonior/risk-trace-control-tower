@@ -1,0 +1,35 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: requireresourcelimits
+  annotations:
+    description: "Deny any container missing explicit cpu or memory limits. Checks spec.containers and spec.initContainers."
+spec:
+  crd:
+    spec:
+      names:
+        kind: RequireResourceLimits
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package requireresourcelimits
+
+      violation[{"msg": msg}] {
+        container := input_containers[_]
+        not container.resources.limits.cpu
+        msg := sprintf("Container '%v' is missing cpu limit — all containers require explicit resource limits", [container.name])
+      }
+
+      violation[{"msg": msg}] {
+        container := input_containers[_]
+        not container.resources.limits.memory
+        msg := sprintf("Container '%v' is missing memory limit — all containers require explicit resource limits", [container.name])
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.containers[_]
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.initContainers[_]
+      }

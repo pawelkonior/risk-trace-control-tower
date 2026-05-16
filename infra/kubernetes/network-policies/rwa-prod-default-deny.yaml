@@ -1,0 +1,12 @@
+# Zero-trust default: deny ALL ingress and egress for every pod in rwa-prod.
+# This MUST be applied before any allow rules.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: rwa-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
