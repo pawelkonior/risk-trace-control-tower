@@ -6,6 +6,8 @@ import type {
   ExportResult,
   LineageTraceSnapshot,
   NotificationItem,
+  RwaAnalysisRequest,
+  RwaAnalysisResponse,
   RwaDashboardSnapshot,
   SearchResponse,
   UiActionPayload,
@@ -41,6 +43,17 @@ export function fetchLineageTrace(traceId: string, signal?: AbortSignal) {
 
 export function fetchBriefingSnapshot(signal?: AbortSignal) {
   return requestJson<BriefingSnapshot>("/v1/briefing/snapshot", { signal });
+}
+
+export function postRwaExecutiveCommentary(
+  payload: RwaAnalysisRequest,
+  signal?: AbortSignal,
+) {
+  return requestJson<RwaAnalysisResponse>("/v1/agents/rwa-analysis/run", {
+    body: JSON.stringify(payload),
+    method: "POST",
+    signal,
+  });
 }
 
 export function fetchNotifications(signal?: AbortSignal) {

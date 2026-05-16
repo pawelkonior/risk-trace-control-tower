@@ -32,8 +32,7 @@ def default_datasets(generated_at: str) -> dict[str, dict[str, Any]]:
 
 def default_actions() -> Iterable[dict[str, Any]]:
     lineage_processing_message = (
-        "Data is being processed. We will email a...k...@risktrace.com "
-        "when the task is complete."
+        "Data is being processed. We will email a...k...@risktrace.com when the task is complete."
     )
     return [
         _action(

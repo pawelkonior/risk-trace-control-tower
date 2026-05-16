@@ -3232,6 +3232,190 @@ a:focus-visible,
   padding: 16px;
 }
 
+.ai-commentary-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ai-commentary-header,
+.ai-commentary-actions,
+.ai-commentary-meta,
+.ai-commentary-tabs,
+.ai-commentary-observability,
+.ai-actions-empty {
+  display: flex;
+  align-items: center;
+}
+
+.ai-commentary-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-commentary-actions {
+  gap: 8px;
+}
+
+.ai-commentary-meta {
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #50607a;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.ai-commentary-meta span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #dce4f1;
+  border-radius: 6px;
+  background: #f8fbff;
+}
+
+.ai-commentary-tabs {
+  width: fit-content;
+  overflow: hidden;
+  border: 1px solid #dce4f1;
+  border-radius: 7px;
+}
+
+.ai-commentary-tabs button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid #dce4f1;
+  background: #ffffff;
+  color: #31405f;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-commentary-tabs button:first-child {
+  border-left: 0;
+}
+
+.ai-commentary-tabs button.active {
+  background: #0751d7;
+  color: #ffffff;
+}
+
+.ai-commentary-text {
+  margin: 0;
+  color: #07142d;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 19px;
+}
+
+.ai-commentary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-observation-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e4ebf5;
+  border-radius: 7px;
+  background: #fbfdff;
+}
+
+.ai-observation-list > strong {
+  color: #07142d;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-observation-row,
+.ai-action-row {
+  display: grid;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-observation-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.ai-observation-row span:not(.status-badge) {
+  min-width: 0;
+  color: #31405f;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 15px;
+}
+
+.ai-actions-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.ai-action-row {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  min-height: 32px;
+  padding: 7px 9px;
+  border: 1px solid #e4ebf5;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.ai-action-row span:not(.status-badge) {
+  color: #07142d;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 15px;
+}
+
+.ai-actions-empty {
+  gap: 8px;
+  min-height: 34px;
+  color: #0f8f3a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-commentary-observability {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.ai-commentary-observability span {
+  color: #50607a;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.ai-commentary-observability strong {
+  color: #07142d;
+}
+
+.ai-commentary-state {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #dce4f1;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #31405f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-commentary-state-danger {
+  border-color: #f6c9c9;
+  background: #fff5f5;
+  color: #b42318;
+}
+
 .briefing-card-header,
 .briefing-panel-title {
   display: flex;
@@ -4714,6 +4898,34 @@ a:focus-visible,
   .briefing-card-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ai-commentary-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ai-commentary-actions,
+  .ai-commentary-tabs {
+    width: 100%;
+  }
+
+  .ai-commentary-actions .button,
+  .ai-commentary-tabs button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .ai-commentary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-action-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .ai-action-row .status-badge {
+    grid-column: 2;
   }
 
   .movement-card .briefing-card-header {
