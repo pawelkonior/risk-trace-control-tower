@@ -27,6 +27,12 @@
         "SONARQUBE_TOKEN": "${env:SONARQUBE_TOKEN}",
         "SONARQUBE_URL": "http://127.0.0.1:9000"
       }
+    },
+    "sonatype-guide": {
+      "command": ".mcp/scripts/run-sonatype-guide-mcp.sh",
+      "env": {
+        "SONATYPE_GUIDE_MCP_TOKEN": "${env:SONATYPE_GUIDE_MCP_TOKEN}"
+      }
     }
   }
 }

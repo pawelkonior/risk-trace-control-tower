@@ -97,6 +97,25 @@ def test_generate_config_references_available_tokens_without_writing_values(
         assert secret_value not in vscode_text
 
 
+def test_generate_config_preserves_existing_sonatype_without_token(tmp_path: Path) -> None:
+    tooling = load_mcp_tooling()
+
+    existing_sonatype = {
+        "command": ".mcp/scripts/run-sonatype-guide-mcp.sh",
+        "env": {"SONATYPE_GUIDE_MCP_TOKEN": "${env:SONATYPE_GUIDE_MCP_TOKEN}"},
+    }
+    (tmp_path / ".bob").mkdir()
+    (tmp_path / ".bob" / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"sonatype-guide": existing_sonatype}}),
+        encoding="utf-8",
+    )
+
+    tooling.generate_config(tmp_path, {}, stream=io.StringIO())
+
+    bob_config = read_config(tmp_path, ".bob/mcp.json")
+    assert bob_config["mcpServers"]["sonatype-guide"] == existing_sonatype
+
+
 def test_gitignore_protects_generated_configs_and_local_secret_files() -> None:
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 

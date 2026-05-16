@@ -159,7 +159,7 @@ ZAP env file safely.
 
 ## Sonatype Guide MCP
 
-Sonatype Guide is included only when the token is available in the current shell:
+Sonatype Guide uses `SONATYPE_GUIDE_MCP_TOKEN` from the current shell:
 
 ```bash
 export SONATYPE_GUIDE_MCP_TOKEN=<your-token>
@@ -169,8 +169,9 @@ export SONATYPE_GUIDE_MCP_TOKEN=<your-token>
 The token value is not written to generated config. Keep the variable exported when launching the
 MCP client so `.mcp/scripts/run-sonatype-guide-mcp.sh` can pass it to `mcp-remote`.
 
-If `SONATYPE_GUIDE_MCP_TOKEN` is missing, generation still succeeds and prints a skip message.
-SonarQube and OWASP ZAP configuration are still generated when their prerequisites are met.
+If `SONATYPE_GUIDE_MCP_TOKEN` is missing, generation still succeeds and preserves an existing
+`sonatype-guide` entry instead of deleting it. SonarQube and OWASP ZAP configuration are still
+generated when their prerequisites are met.
 
 ## Client Prerequisites
 

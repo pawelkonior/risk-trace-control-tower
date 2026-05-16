@@ -546,6 +546,8 @@ def merge_server_config(
     ):
         if key in servers:
             merged_servers[key] = servers[key]
+        elif key == "sonatype-guide" and key in merged_servers:
+            continue
         else:
             merged_servers.pop(key, None)
 
