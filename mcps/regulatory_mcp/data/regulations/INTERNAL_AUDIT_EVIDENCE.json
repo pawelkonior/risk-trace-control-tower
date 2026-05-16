@@ -1,0 +1,77 @@
+{
+  "id": "INTERNAL_AUDIT_EVIDENCE",
+  "title": "Internal Audit Evidence and Retention Policy",
+  "type": "policy",
+  "jurisdiction": "INTERNAL",
+  "status": "active",
+  "as_of": "2025-01-01T00:00:00.000Z",
+  "applies_to": ["internal_policy"],
+  "domains": [
+    "audit_trail",
+    "governance",
+    "data_quality"
+  ],
+  "summary": "Internal policy defining requirements for audit evidence collection, storage, and retention for regulatory calculations and reporting systems. Ensures auditability and regulatory compliance.",
+  "key_requirements": [
+    {
+      "id": "AUDIT-CALC-TRACE",
+      "title": "Calculation traceability",
+      "description": "Every RWA calculation must be fully traceable with input data, parameters, and intermediate results",
+      "mandatory": true
+    },
+    {
+      "id": "AUDIT-RETENTION",
+      "title": "Evidence retention",
+      "description": "Audit evidence must be retained for minimum 7 years in immutable storage",
+      "mandatory": true
+    },
+    {
+      "id": "AUDIT-ACCESS-LOG",
+      "title": "Access logging",
+      "description": "All access to calculation systems and data must be logged with user identity and timestamp",
+      "mandatory": true
+    },
+    {
+      "id": "AUDIT-CHANGE-LOG",
+      "title": "Change logging",
+      "description": "All configuration and rule changes must be logged with before/after values",
+      "mandatory": true
+    },
+    {
+      "id": "AUDIT-REPORT-PACK",
+      "title": "Report package",
+      "description": "Each regulatory report submission must include supporting evidence package",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "audit_logging",
+      "description": "Implement comprehensive audit logging with immutable storage",
+      "priority": "critical"
+    },
+    {
+      "area": "calculation_engine",
+      "description": "Generate detailed calculation traces for every RWA computation",
+      "priority": "critical"
+    },
+    {
+      "area": "data_model",
+      "description": "Design data model to support audit trail and evidence retention",
+      "priority": "high"
+    },
+    {
+      "area": "reporting",
+      "description": "Generate evidence packages automatically with each report",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "internal",
+      "citation": "Internal Audit Evidence Policy v2.0",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": false
+}

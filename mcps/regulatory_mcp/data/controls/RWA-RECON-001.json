@@ -1,0 +1,70 @@
+{
+  "id": "RWA-RECON-001",
+  "title": "RWA Calculation Reconciliation",
+  "description": "RWA calculations must be reconciled between different calculation runs, systems, and against regulatory submissions.",
+  "severity": "high",
+  "domains": ["capital_adequacy", "data_quality", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P3",
+      "rationale": "Accuracy requires reconciliation processes"
+    },
+    {
+      "regulation_id": "INTERNAL_RULE_GOVERNANCE",
+      "requirement_id": "RULE-RECON",
+      "rationale": "Rule changes require reconciliation"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "reconciliation_report",
+      "description": "Reconciliation reports for calculation runs",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-RECON-001-AC1",
+      "description": "Reconciliation differences are within tolerance",
+      "verification_method": "automated_test",
+      "pass_threshold": "<0.01% difference"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-RECON-001-TO1",
+      "description": "Test reconciliation logic",
+      "test_type": "integration_test",
+      "frequency": "per_release",
+      "automated": true,
+      "blocking": false
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "code_pattern",
+      "description": "Implement reconciliation as separate service"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Ignoring reconciliation breaks",
+      "risk": "Undetected calculation errors",
+      "alternative": "Investigate all reconciliation breaks"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "notify_compliance",
+      "trigger_condition": "Reconciliation breaks exceed threshold",
+      "description": "Alert compliance team",
+      "automated": true
+    }
+  ],
+  "tags": ["reconciliation", "data-quality"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

@@ -1,0 +1,80 @@
+{
+  "id": "REL-EVID-001",
+  "title": "Release Evidence Package",
+  "description": "Every production release must include complete evidence package with test results, approvals, and documentation.",
+  "severity": "critical",
+  "domains": ["governance", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "INTERNAL_SDLC",
+      "requirement_id": "SDLC-RELEASE",
+      "rationale": "Release approval requires evidence package"
+    },
+    {
+      "regulation_id": "INTERNAL_AUDIT_EVIDENCE",
+      "requirement_id": "AUDIT-REPORT-PACK",
+      "rationale": "Audit evidence must be packaged with releases"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "test_result",
+      "description": "All test results",
+      "required_for_release": true,
+      "automated": true
+    },
+    {
+      "type": "approval_record",
+      "description": "Release approval from technical lead and compliance",
+      "required_for_release": true,
+      "automated": false
+    },
+    {
+      "type": "documentation",
+      "description": "Release notes and change documentation",
+      "required_for_release": true,
+      "automated": false
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "REL-EVID-001-AC1",
+      "description": "Evidence package includes all required artifacts",
+      "verification_method": "manual_inspection"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "REL-EVID-001-TO1",
+      "description": "Verify evidence package completeness",
+      "test_type": "audit_test",
+      "frequency": "per_release",
+      "automated": false,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "process",
+      "description": "Automate evidence collection in CI/CD pipeline"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Releasing without complete evidence",
+      "risk": "Audit failures and compliance issues",
+      "alternative": "Block release until evidence is complete"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Required evidence missing",
+      "description": "Block release without evidence",
+      "automated": true
+    }
+  ],
+  "tags": ["release", "evidence", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

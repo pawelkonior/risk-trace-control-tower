@@ -1,0 +1,64 @@
+{
+  "id": "RWA-DQ-001",
+  "title": "Data Quality Flags and Error Handling",
+  "description": "Data quality issues must be flagged, logged, and handled according to defined policies. Critical data quality issues must block calculations.",
+  "severity": "high",
+  "domains": ["data_quality", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P3",
+      "rationale": "Data accuracy and integrity require systematic data quality management"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "data_quality_report",
+      "description": "Data quality flags and resolution tracking",
+      "required_for_release": false,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-DQ-001-AC1",
+      "description": "Data quality flags are logged for all issues",
+      "verification_method": "automated_test"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-DQ-001-TO1",
+      "description": "Test data quality flag generation",
+      "test_type": "unit_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": false
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "code_pattern",
+      "description": "Use structured logging for data quality issues"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Ignoring data quality warnings",
+      "risk": "Accumulation of data quality issues",
+      "alternative": "Track and remediate all data quality flags"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "notify_compliance",
+      "trigger_condition": "Critical data quality issues detected",
+      "description": "Notify compliance team of critical DQ issues",
+      "automated": true
+    }
+  ],
+  "tags": ["data-quality"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

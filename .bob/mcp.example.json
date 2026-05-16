@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "bankRegulatoryControls": {
+      "command": "node",
+      "args": [
+        "mcps/regulatory_mcp/build/index.js"
+      ],
+      "allowedTools": [
+        "health_check",
+        "get_regulatory_profile",
+        "search_regulations",
+        "match_controls",
+        "review_feature_description",
+        "review_architecture_text",
+        "review_code_diff",
+        "generate_acceptance_criteria",
+        "generate_data_lineage_requirements",
+        "generate_audit_log_requirements",
+        "generate_test_obligations",
+        "assess_release_readiness",
+        "generate_regulatory_mapping_report",
+        "generate_rwa_run_evidence_requirements",
+        "explain_control"
+      ]
+    }
+  }
+}

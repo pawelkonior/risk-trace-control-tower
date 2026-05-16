@@ -7983,9 +7983,9 @@ Comprehensive review of RCT-9 implementation covering correctness, edge cases, s
 
 #### Testing URL Encoding:
 ```hcl
-# Example password: "p@ss:word#123"
-# URL encoded: "p%40ss%3Aword%23123"
-# PostgreSQL URL: postgresql+psycopg://user:p%40ss%3Aword%23123@host/db
+# Example password: "<hidden_data>"
+# URL encoded: "<hidden_data>"
+# PostgreSQL URL: postgresql+psycopg://user:<hidden_data>@host/db
 # ✅ Valid and parseable
 ```
 

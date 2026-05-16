@@ -1,0 +1,85 @@
+{
+  "id": "RWA-AUDIT-001",
+  "title": "Calculation Audit Trail and Traceability",
+  "description": "Every RWA calculation must generate a complete audit trail including inputs, parameters, intermediate results, and final outputs with timestamps and user context.",
+  "severity": "critical",
+  "domains": ["audit_trail", "capital_adequacy"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "INTERNAL_AUDIT_EVIDENCE",
+      "requirement_id": "AUDIT-CALC-TRACE",
+      "rationale": "Calculation traceability is required for audit and regulatory review"
+    },
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P3",
+      "rationale": "Accuracy requires ability to trace and verify calculations"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "audit_log",
+      "description": "Complete audit trail for all calculations",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "calculation_trace",
+      "description": "Detailed calculation traces for sample exposures",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-AUDIT-001-AC1",
+      "description": "Audit trail includes all required fields",
+      "verification_method": "automated_test"
+    },
+    {
+      "id": "RWA-AUDIT-001-AC2",
+      "description": "Audit logs are immutable and tamper-evident",
+      "verification_method": "audit_review"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-AUDIT-001-TO1",
+      "description": "Verify audit trail generation for all calculation paths",
+      "test_type": "integration_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "architecture",
+      "description": "Use structured logging with correlation IDs for traceability"
+    },
+    {
+      "category": "tool",
+      "description": "Consider using append-only log storage for immutability"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Logging only final results without intermediate steps",
+      "risk": "Cannot trace calculation errors or verify correctness",
+      "alternative": "Log all intermediate calculation steps"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "generate_evidence",
+      "trigger_condition": "Calculation completes",
+      "description": "Generate calculation trace document",
+      "automated": true
+    }
+  ],
+  "tags": ["audit", "traceability", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}
