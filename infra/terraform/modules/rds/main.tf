@@ -78,7 +78,7 @@ resource "aws_db_parameter_group" "postgres16" {
 # RDS Instance - PostgreSQL 16.2
 # ============================================================================
 
-resource "aws_db_instance" "main" { # nosemgrep: terraform.aws.security.aws-db-instance-no-logging
+resource "aws_db_instance" "main" {
   # Instance Identification
   identifier = "${var.project_name}-${var.environment}-postgres"
 

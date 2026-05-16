@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from dataclasses import asdict
 from pathlib import Path
 
@@ -127,7 +128,7 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         """Provide the app-scoped calculator to request handlers."""
         return app.state.calculator
 
-    def get_db_session() -> Session:
+    def get_db_session() -> Generator[Session, None, None]:
         """Provide a request-scoped database session."""
         yield from session_scope(app.state.session_factory)
 
