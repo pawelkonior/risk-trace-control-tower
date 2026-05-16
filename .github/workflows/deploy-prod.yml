@@ -24,8 +24,10 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Validate
+        env:
+          INPUT_CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+          if [ "$INPUT_CONFIRM" != "DEPLOY" ]; then
             echo "Must type DEPLOY to confirm"
             exit 1
           fi
@@ -39,8 +41,10 @@ jobs:
 
       - name: Resolve tag (default to latest main SHA)
         id: tag
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          TAG="${{ inputs.image_tag }}"
+          TAG="${INPUT_IMAGE_TAG}"
           if [ -z "${TAG}" ]; then
             TAG=$(git rev-parse HEAD)
           fi
