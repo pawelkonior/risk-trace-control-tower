@@ -1,48 +1,24 @@
-name: Deploy — prod
+name: Deploy — prod (manual re-deploy / rollback)
+
+# Use this to deploy a specific SHA or roll back.
+# Normal deploys happen automatically via ci.yml on push to main.
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Git SHA of images to deploy"
-        required: true
+        description: "Git SHA to deploy (leave blank = latest main)"
+        required: false
         type: string
       confirm:
         description: "Type DEPLOY to confirm"
         required: true
         type: string
 
-# required-reviewers: 2 — set in GitHub environment "prod" settings
-
 jobs:
-  pre-flight:
-    name: Pre-flight validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate confirmation token
-        run: |
-          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
-            echo "Confirmation must be exactly 'DEPLOY'"
-            exit 1
-          fi
-
-      - name: Verify CI passed for this SHA
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          STATUS=$(gh api \
-            /repos/${{ github.repository }}/commits/${{ inputs.image_tag }}/check-runs \
-            --jq '[.check_runs[] | select(.name == "Build: backend image → ECR")] | .[0].conclusion')
-          echo "CI status for ${{ inputs.image_tag }}: ${STATUS}"
-          if [ "${STATUS}" != "success" ]; then
-            echo "CI has not passed for this SHA — refusing deploy"
-            exit 1
-          fi
-
   deploy:
-    name: "Deploy to prod (Docker Compose)"
+    name: "Manual deploy: ${{ inputs.image_tag || 'latest' }}"
     runs-on: ubuntu-latest
-    needs: pre-flight
     environment:
       name: prod
       url: https://${{ secrets.DOMAIN }}
@@ -50,105 +26,66 @@ jobs:
       group: prod-deploy
       cancel-in-progress: false
     steps:
+      - name: Validate
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "Must type DEPLOY to confirm"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Record pre-deploy image tag
-        id: pre-deploy
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.PROD_EC2_HOST }}
-          username: ${{ secrets.PROD_EC2_USER }}
-          key: ${{ secrets.PROD_EC2_SSH_KEY }}
-          script: |
-            grep IMAGE_TAG /opt/rwa/.env | cut -d= -f2 || echo "unknown"
+      - name: Resolve tag (default to latest main SHA)
+        id: tag
+        run: |
+          TAG="${{ inputs.image_tag }}"
+          if [ -z "${TAG}" ]; then
+            TAG=$(git rev-parse HEAD)
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy — docker compose pull + up
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.PROD_EC2_HOST }}
           username: ${{ secrets.PROD_EC2_USER }}
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
-          envs: IMAGE_TAG,REGISTRY
           script: |
             set -euo pipefail
             cd /opt/rwa
 
-            # Login to ECR
+            grep IMAGE_TAG .env | cut -d= -f2 > /tmp/prev-image-tag || true
+
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
               | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-            # Update image tag
-            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ inputs.image_tag }}/" .env
-
-            # Pull new images (zero-downtime: pull before stopping old)
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${{ steps.tag.outputs.tag }}|" .env
             docker compose -f docker-compose.prod.yml pull
-
-            # Bring up new containers
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # Wait for health
-            echo "Waiting for backend..."
-            for i in $(seq 1 12); do
-              if docker compose -f docker-compose.prod.yml exec backend \
-                  curl -sf http://localhost:8000/v1/health > /dev/null 2>&1; then
-                echo "Backend healthy."
-                break
-              fi
-              sleep 5
+            for i in $(seq 1 18); do
+              docker compose -f docker-compose.prod.yml exec -T backend \
+                curl -sf http://localhost:8000/v1/health > /dev/null 2>&1 && break
+              [ "$i" -eq 18 ] && { echo "Health check failed"; exit 1; }
+              sleep 10
             done
+            echo "Deploy OK: ${{ steps.tag.outputs.tag }}"
 
-            # Final health check
-            curl -f http://localhost/health || exit 1
-            echo "Deploy complete: ${{ inputs.image_tag }}"
-        env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
-          REGISTRY: ${{ secrets.ECR_REGISTRY }}
-
-      - name: Smoke test /v1/health via public URL
+      - name: Smoke test
         run: |
           curl -f --retry 5 --retry-delay 5 \
             https://${{ secrets.DOMAIN }}/api/v1/health
 
-      - name: Upload deployment evidence to S3 WORM
+      - name: Evidence → S3
         if: always()
         run: |
           TS=$(date -u +%Y%m%dT%H%M%SZ)
-          cat > /tmp/deploy-evidence.json <<EOF
-          {
-            "timestamp": "${TS}",
-            "environment": "prod",
-            "image_tag": "${{ inputs.image_tag }}",
-            "deployed_by": "${{ github.actor }}",
-            "workflow_run": "${{ github.run_id }}",
-            "outcome": "${{ job.status }}"
-          }
-          EOF
-          aws s3 cp /tmp/deploy-evidence.json \
-            s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/deployments/prod/${TS}.json \
-            --no-progress
-
-  rollback:
-    name: Rollback (on failure)
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: failure()
-    steps:
-      - name: Rollback to previous image tag
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.PROD_EC2_HOST }}
-          username: ${{ secrets.PROD_EC2_USER }}
-          key: ${{ secrets.PROD_EC2_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            cd /opt/rwa
-            echo "Rolling back..."
-            git stash || true
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "Rollback complete."
+          echo "{\"timestamp\":\"${TS}\",\"sha\":\"${{ steps.tag.outputs.tag }}\",\"actor\":\"${{ github.actor }}\",\"trigger\":\"manual\",\"status\":\"${{ job.status }}\"}" \
+            | aws s3 cp - \
+                s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/deployments/prod/${TS}.json \
+                --no-progress

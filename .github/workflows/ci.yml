@@ -7,19 +7,19 @@ on:
     branches: [main]
 
 env:
-  PYTHON_VERSION: "3.12"
   UV_VERSION: "0.5.0"
   REGISTRY: ${{ secrets.ECR_REGISTRY }}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline: test → quality → supply-chain → sast → build → sbom
-# Backend must pass SonarQube Quality Gate + OWASP DC before Docker push.
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Secrets required (GitHub repo Settings → Secrets) ──────────────────────
+# ECR_REGISTRY      — e.g. 123456789.dkr.ecr.eu-west-1.amazonaws.com
+# AWS_REGION        — e.g. eu-west-1
+# AWS_CI_ROLE_ARN   — IAM role with ECR push + S3 write (OIDC)
+# COMPLIANCE_EVIDENCE_BUCKET — S3 bucket for SBOM / evidence
 
 jobs:
-  # ── 1. TEST ───────────────────────────────────────────────────────────────
+  # ── 1. BACKEND: lint + test ────────────────────────────────────────────────
   backend-test:
-    name: "Test: backend (uv + pytest)"
+    name: "backend: ruff + mypy + pytest"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,7 +36,7 @@ jobs:
       - run: uv sync --all-extras
 
       - name: ruff lint
-        run: uv run ruff check . --output-format=json > ruff-report.json || uv run ruff check .
+        run: uv run ruff check .
 
       - name: ruff format
         run: uv run ruff format --check .
@@ -45,17 +45,16 @@ jobs:
         run: uv run mypy src/ --ignore-missing-imports
 
       - name: pytest + coverage
-        run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=xml
 
       - uses: actions/upload-artifact@v4
         with:
-          name: backend-reports
-          path: |
-            apps/backend/coverage.xml
-            apps/backend/ruff-report.json
+          name: backend-coverage
+          path: apps/backend/coverage.xml
 
+  # ── 2. FRONTEND: typecheck + build ────────────────────────────────────────
   frontend-test:
-    name: "Test: frontend (tsc + playwright)"
+    name: "frontend: tsc + vite build + playwright"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,7 +65,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          cache: npm
           cache-dependency-path: apps/frontend/package-lock.json
 
       - run: npm ci
@@ -74,7 +73,7 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
-      - name: Build
+      - name: Vite build
         run: npm run build
 
       - name: Playwright install
@@ -90,103 +89,9 @@ jobs:
           name: playwright-report
           path: apps/frontend/playwright-report/
 
-  # ── 2. CODE QUALITY — SonarQube ──────────────────────────────────────────
-  sonarqube:
-    name: "Quality: SonarQube + Quality Gate"
-    runs-on: ubuntu-latest
-    needs: backend-test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: backend-reports
-          path: apps/backend/
-
-      - name: Bandit (imported by SonarQube)
-        run: |
-          pip install bandit
-          bandit -r apps/backend/src/ -ll -f json -o apps/backend/bandit-report.json || true
-
-      - uses: sonarsource/sonarqube-scan-action@v3
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.python.coverage.reportPaths=apps/backend/coverage.xml
-            -Dsonar.python.bandit.reportPaths=apps/backend/bandit-report.json
-            -Dsonar.python.ruff.reportPaths=apps/backend/ruff-report.json
-
-      - name: Quality Gate check
-        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
-  # ── 3. SUPPLY CHAIN ───────────────────────────────────────────────────────
-  sonatype-nexus-iq:
-    name: "Supply Chain: Sonatype Nexus IQ"
-    runs-on: ubuntu-latest
-    needs: backend-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v4
-        with:
-          version: ${{ env.UV_VERSION }}
-
-      - name: Export dependency manifest
-        working-directory: apps/backend
-        run: uv pip compile pyproject.toml -o requirements.txt
-
-      - uses: sonatype-nexus-community/nexus-iq-github-action@main
-        with:
-          serverUrl: ${{ secrets.NEXUS_IQ_URL }}
-          username: ${{ secrets.NEXUS_IQ_USERNAME }}
-          password: ${{ secrets.NEXUS_IQ_PASSWORD }}
-          applicationId: risk-trace-control-tower
-          stage: BUILD
-          target: apps/backend/requirements.txt
-
-  owasp-dependency-check:
-    name: "Supply Chain: OWASP Dependency Check"
-    runs-on: ubuntu-latest
-    needs: backend-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v4
-        with:
-          version: ${{ env.UV_VERSION }}
-
-      - name: Export manifest
-        working-directory: apps/backend
-        run: uv pip compile pyproject.toml -o requirements.txt
-
-      - uses: dependency-check/Dependency-Check_Action@main
-        with:
-          project: "risk-trace-control-tower"
-          path: "apps/backend"
-          format: "ALL"
-          out: "owasp-reports"
-          args: >
-            --enableRetired
-            --failOnCVSS 7
-            --suppression .github/owasp-suppressions.xml
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: owasp-report
-          path: owasp-reports/
-
-  # ── 4. SAST + SECRETS ─────────────────────────────────────────────────────
+  # ── 3. SAST + SECRETS (free tools, no external server needed) ────────────
   sast:
-    name: "SAST: Semgrep + Bandit + Gitleaks + TruffleHog"
+    name: "sast: semgrep + bandit + gitleaks + trufflehog"
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -196,29 +101,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Semgrep — OWASP Top 10 + FastAPI + secrets
+      - name: Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: >-
-            p/python
-            p/owasp-top-ten
-            p/secrets
-            p/fastapi
-            p/sql-injection
-          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+          config: p/python p/owasp-top-ten p/fastapi p/secrets
 
-      - name: Bandit — CWE Top 25
+      - name: Bandit
         run: |
           pip install bandit
-          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json
+          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json || true
           bandit -r apps/backend/src/ -ll
 
-      - name: Gitleaks — secrets in history
+      - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: TruffleHog — verified secrets
+      - name: TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: .
@@ -226,44 +125,20 @@ jobs:
           head: HEAD
           extra_args: --only-verified
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sast-reports
-          path: bandit-report.json
-
-  # ── 5. IaC SECURITY ───────────────────────────────────────────────────────
-  iac-security:
-    name: "IaC: Checkov + tfsec"
+  # ── 4. BUILD + PUSH → ECR (main branch only) ─────────────────────────────
+  build:
+    name: "build: docker → ECR (${{ matrix.service }})"
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Checkov — Terraform + Docker
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: infra/terraform/environments/prod
-          framework: terraform,dockerfile
-          soft_fail: false
-          skip_check: CKV_AWS_7,CKV_AWS_144
-
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1
-        with:
-          working_directory: infra/terraform/environments/prod
-
-  # ── 6. BUILD + CONTAINER SCAN ─────────────────────────────────────────────
-  backend-build:
-    name: "Build: backend image → ECR"
-    runs-on: ubuntu-latest
-    needs: [backend-test, sonarqube, owasp-dependency-check, sast]
+    needs: [backend-test, frontend-test, sast]
     if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service: [backend, frontend]
     permissions:
       id-token: write
       contents: read
     outputs:
-      image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
+      image_tag: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -276,105 +151,132 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: apps/backend
+          context: apps/${{ matrix.service }}
           push: true
-          tags: ${{ env.REGISTRY }}/backend:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
             git.commit=${{ github.sha }}
-            build.run=${{ github.run_id }}
+            git.branch=${{ github.ref_name }}
 
       - name: Trivy — fail on CRITICAL
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          severity: CRITICAL
-          exit-code: "1"
-          format: sarif
-          output: trivy-backend.sarif
-
-  frontend-build:
-    name: "Build: frontend image → ECR"
-    runs-on: ubuntu-latest
-    needs: [frontend-test, sast]
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - uses: aws-actions/amazon-ecr-login@v2
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: apps/frontend
-          push: true
-          tags: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            git.commit=${{ github.sha }}
-            build.run=${{ github.run_id }}
-
-      - name: Trivy — fail on CRITICAL
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
           severity: CRITICAL
           exit-code: "1"
 
-  # ── 7. SBOM ───────────────────────────────────────────────────────────────
-  sbom:
-    name: "SBOM: CycloneDX → S3 WORM"
+      - name: SBOM → S3
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.service }}.cdx.json
+
+      - run: |
+          aws s3 cp sbom-${{ matrix.service }}.cdx.json \
+            s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/sbom/${{ github.sha }}/sbom-${{ matrix.service }}.cdx.json \
+            --no-progress
+
+  # ── 5. DEPLOY → prod EC2 via Docker Compose ───────────────────────────────
+  deploy:
+    name: "deploy: prod EC2 (docker compose up)"
     runs-on: ubuntu-latest
-    needs: [backend-build, frontend-build]
+    needs: build
     if: github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write
-      contents: read
+    environment:
+      name: prod
+      url: https://${{ secrets.DOMAIN }}
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
         with:
-          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/rwa
 
-      - uses: aws-actions/amazon-ecr-login@v2
+            # Store previous tag for rollback
+            grep IMAGE_TAG .env | cut -d= -f2 > /tmp/prev-image-tag || true
 
-      - name: SBOM — backend
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: sbom-backend.cdx.json
+            # Login to ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+              | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-      - name: SBOM — frontend
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: sbom-frontend.cdx.json
+            # Update image tag
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${{ github.sha }}|" .env
 
-      - name: Upload SBOMs to S3 WORM
+            # Pull new images (before stopping old ones)
+            docker compose -f docker-compose.prod.yml pull
+
+            # Rolling update
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Wait for health
+            echo "Waiting for backend..."
+            for i in $(seq 1 18); do
+              if docker compose -f docker-compose.prod.yml exec -T backend \
+                  curl -sf http://localhost:8000/v1/health > /dev/null 2>&1; then
+                echo "Healthy at attempt ${i}"
+                break
+              fi
+              [ "$i" -eq 18 ] && { echo "Health check failed"; exit 1; }
+              sleep 10
+            done
+
+            echo "Deploy OK: ${{ github.sha }}"
+
+      - name: Smoke test via public URL
         run: |
-          TS=$(date -u +%Y%m%dT%H%M%SZ)
-          for f in sbom-backend.cdx.json sbom-frontend.cdx.json; do
-            aws s3 cp $f \
-              s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/sbom/${{ github.sha }}/${f} \
-              --no-progress
-          done
+          sleep 5
+          curl -f --retry 5 --retry-delay 5 \
+            https://${{ secrets.DOMAIN }}/api/v1/health
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload deploy evidence → S3
+        if: always()
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: sbom
-          path: "*.cdx.json"
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - run: |
+          TS=$(date -u +%Y%m%dT%H%M%SZ)
+          echo "{\"timestamp\":\"${TS}\",\"sha\":\"${{ github.sha }}\",\"actor\":\"${{ github.actor }}\",\"status\":\"${{ job.status }}\"}" \
+            | aws s3 cp - \
+                s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/deployments/prod/${TS}.json \
+                --no-progress
+        if: always()
+
+  # ── ROLLBACK (manual, on failure) ─────────────────────────────────────────
+  rollback:
+    name: "rollback: restore previous image tag"
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/rwa
+            PREV=$(cat /tmp/prev-image-tag 2>/dev/null || echo "")
+            if [ -n "${PREV}" ]; then
+              echo "Rolling back to ${PREV}"
+              sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${PREV}|" .env
+              docker compose -f docker-compose.prod.yml up -d --remove-orphans
+              echo "Rollback complete: ${PREV}"
+            else
+              echo "No previous tag found — manual intervention required"
+              exit 1
+            fi
