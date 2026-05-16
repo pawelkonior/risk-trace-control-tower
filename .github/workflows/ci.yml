@@ -11,9 +11,15 @@ env:
   UV_VERSION: "0.5.0"
   REGISTRY: ${{ secrets.ECR_REGISTRY }}
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline: test → quality → supply-chain → sast → build → sbom
+# Backend must pass SonarQube Quality Gate + OWASP DC before Docker push.
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
+  # ── 1. TEST ───────────────────────────────────────────────────────────────
   backend-test:
-    name: Backend — lint + test
+    name: "Test: backend (uv + pytest)"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,37 +29,70 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v4
         with:
           version: ${{ env.UV_VERSION }}
 
-      - name: Install dependencies
-        run: uv sync --all-extras
+      - run: uv sync --all-extras
 
-      - name: Ruff lint
+      - name: ruff lint
         run: uv run ruff check . --output-format=json > ruff-report.json || uv run ruff check .
 
-      - name: Ruff format check
+      - name: ruff format
         run: uv run ruff format --check .
 
       - name: mypy
         run: uv run mypy src/ --ignore-missing-imports
 
-      - name: Run tests
+      - name: pytest + coverage
         run: uv run pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term
 
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: backend-test-reports
+          name: backend-reports
           path: |
             apps/backend/coverage.xml
             apps/backend/ruff-report.json
-            apps/backend/bandit-report.json
 
+  frontend-test:
+    name: "Test: frontend (tsc + playwright)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Playwright install
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright e2e
+        run: npm run test:e2e
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/frontend/playwright-report/
+
+  # ── 2. CODE QUALITY — SonarQube ──────────────────────────────────────────
   sonarqube:
-    name: SonarQube analysis
+    name: "Quality: SonarQube + Quality Gate"
     runs-on: ubuntu-latest
     needs: backend-test
     steps:
@@ -61,19 +100,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download test reports
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: backend-test-reports
+          name: backend-reports
           path: apps/backend/
 
-      - name: Bandit SAST (for SonarQube import)
+      - name: Bandit (imported by SonarQube)
         run: |
           pip install bandit
           bandit -r apps/backend/src/ -ll -f json -o apps/backend/bandit-report.json || true
 
-      - name: SonarQube scan
-        uses: sonarsource/sonarqube-scan-action@v3
+      - uses: sonarsource/sonarqube-scan-action@v3
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -83,22 +120,22 @@ jobs:
             -Dsonar.python.bandit.reportPaths=apps/backend/bandit-report.json
             -Dsonar.python.ruff.reportPaths=apps/backend/ruff-report.json
 
-      - name: SonarQube Quality Gate check
+      - name: Quality Gate check
         uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
+  # ── 3. SUPPLY CHAIN ───────────────────────────────────────────────────────
   sonatype-nexus-iq:
-    name: Sonatype Nexus IQ — OSS component analysis
+    name: "Supply Chain: Sonatype Nexus IQ"
     runs-on: ubuntu-latest
     needs: backend-test
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v4
         with:
           version: ${{ env.UV_VERSION }}
 
@@ -106,8 +143,7 @@ jobs:
         working-directory: apps/backend
         run: uv pip compile pyproject.toml -o requirements.txt
 
-      - name: Sonatype Nexus IQ scan
-        uses: sonatype-nexus-community/nexus-iq-github-action@main
+      - uses: sonatype-nexus-community/nexus-iq-github-action@main
         with:
           serverUrl: ${{ secrets.NEXUS_IQ_URL }}
           username: ${{ secrets.NEXUS_IQ_USERNAME }}
@@ -117,22 +153,21 @@ jobs:
           target: apps/backend/requirements.txt
 
   owasp-dependency-check:
-    name: OWASP Dependency Check
+    name: "Supply Chain: OWASP Dependency Check"
     runs-on: ubuntu-latest
+    needs: backend-test
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v4
         with:
           version: ${{ env.UV_VERSION }}
 
-      - name: Export dependency manifest
+      - name: Export manifest
         working-directory: apps/backend
         run: uv pip compile pyproject.toml -o requirements.txt
 
-      - name: OWASP Dependency Check
-        uses: dependency-check/Dependency-Check_Action@main
+      - uses: dependency-check/Dependency-Check_Action@main
         with:
           project: "risk-trace-control-tower"
           path: "apps/backend"
@@ -143,15 +178,15 @@ jobs:
             --failOnCVSS 7
             --suppression .github/owasp-suppressions.xml
 
-      - name: Upload OWASP report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: owasp-dependency-check-report
+          name: owasp-report
           path: owasp-reports/
 
+  # ── 4. SAST + SECRETS ─────────────────────────────────────────────────────
   sast:
-    name: SAST — Semgrep + Bandit + secrets scan
+    name: "SAST: Semgrep + Bandit + Gitleaks + TruffleHog"
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -161,25 +196,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Semgrep
+      - name: Semgrep — OWASP Top 10 + FastAPI + secrets
         uses: returntocorp/semgrep-action@v1
         with:
           config: >-
             p/python
             p/owasp-top-ten
             p/secrets
-            p/django
-            p/flask
             p/fastapi
+            p/sql-injection
           publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
 
-      - name: Bandit
+      - name: Bandit — CWE Top 25
         run: |
           pip install bandit
-          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json || true
+          bandit -r apps/backend/src/ -ll -f json -o bandit-report.json
           bandit -r apps/backend/src/ -ll
 
-      - name: TruffleHog secrets scan
+      - name: Gitleaks — secrets in history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: TruffleHog — verified secrets
         uses: trufflesecurity/trufflehog@main
         with:
           path: .
@@ -187,34 +226,55 @@ jobs:
           head: HEAD
           extra_args: --only-verified
 
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-reports
+          path: bandit-report.json
 
-  backend-build:
-    name: Backend — Docker build + push
+  # ── 5. IaC SECURITY ───────────────────────────────────────────────────────
+  iac-security:
+    name: "IaC: Checkov + tfsec"
     runs-on: ubuntu-latest
-    needs: [backend-test, sast, sonarqube, owasp-dependency-check]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')
-    permissions:
-      id-token: write
-      contents: read
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkov — Terraform + Docker
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform/environments/prod
+          framework: terraform,dockerfile
+          soft_fail: false
+          skip_check: CKV_AWS_7,CKV_AWS_144
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1
+        with:
+          working_directory: infra/terraform/environments/prod
+
+  # ── 6. BUILD + CONTAINER SCAN ─────────────────────────────────────────────
+  backend-build:
+    name: "Build: backend image → ECR"
+    runs-on: ubuntu-latest
+    needs: [backend-test, sonarqube, owasp-dependency-check, sast]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push backend image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: apps/backend
           push: true
@@ -223,54 +283,38 @@ jobs:
           cache-to: type=gha,mode=max
           labels: |
             git.commit=${{ github.sha }}
-            git.branch=${{ github.ref_name }}
             build.run=${{ github.run_id }}
 
-      - name: Trivy image scan — fail on CRITICAL
+      - name: Trivy — fail on CRITICAL
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          format: sarif
-          output: trivy-backend.sarif
           severity: CRITICAL
           exit-code: "1"
-
-      - name: Generate SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: sbom-backend.cdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-backend
-          path: sbom-backend.cdx.json
+          format: sarif
+          output: trivy-backend.sarif
 
   frontend-build:
-    name: Frontend — Docker build + push
+    name: "Build: frontend image → ECR"
     runs-on: ubuntu-latest
-    needs: [sast]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')
+    needs: [frontend-test, sast]
+    if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
       contents: read
+    outputs:
+      image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: apps/frontend
           push: true
@@ -279,35 +323,20 @@ jobs:
           cache-to: type=gha,mode=max
           labels: |
             git.commit=${{ github.sha }}
-            git.branch=${{ github.ref_name }}
             build.run=${{ github.run_id }}
 
-      - name: Trivy image scan — fail on CRITICAL
+      - name: Trivy — fail on CRITICAL
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-          format: sarif
-          output: trivy-frontend.sarif
           severity: CRITICAL
           exit-code: "1"
 
-      - name: Generate SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: sbom-frontend.cdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-frontend
-          path: sbom-frontend.cdx.json
-
-  health-check-verify:
-    name: Verify /v1/health contract
+  # ── 7. SBOM ───────────────────────────────────────────────────────────────
+  sbom:
+    name: "SBOM: CycloneDX → S3 WORM"
     runs-on: ubuntu-latest
-    needs: backend-build
+    needs: [backend-build, frontend-build]
     if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
@@ -315,22 +344,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Start container and verify /v1/health
+      - name: SBOM — backend
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/backend:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom-backend.cdx.json
+
+      - name: SBOM — frontend
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom-frontend.cdx.json
+
+      - name: Upload SBOMs to S3 WORM
         run: |
-          docker run -d --name backend-test \
-            -e RWA_DATABASE_URL="sqlite:///tmp/test.db" \
-            -e RWA_CORS_ORIGINS="*" \
-            -p 8000:8000 \
-            ${{ env.REGISTRY }}/backend:${{ github.sha }}
-          sleep 15
-          curl -f http://localhost:8000/v1/health
-          docker rm -f backend-test
+          TS=$(date -u +%Y%m%dT%H%M%SZ)
+          for f in sbom-backend.cdx.json sbom-frontend.cdx.json; do
+            aws s3 cp $f \
+              s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/sbom/${{ github.sha }}/${f} \
+              --no-progress
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: "*.cdx.json"

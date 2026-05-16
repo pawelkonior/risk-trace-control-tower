@@ -4,124 +4,84 @@ on:
   pull_request:
     paths:
       - "infra/terraform/**"
-      - "infra/helm/**"
-      - "infra/kubernetes/**"
+      - "docker/**"
   push:
     branches: [main]
     paths:
       - "infra/terraform/**"
-      - "infra/helm/**"
-      - "infra/kubernetes/**"
+      - "docker/**"
 
 env:
   TF_VERSION: "1.9.0"
-  HELM_VERSION: "3.15.0"
 
 jobs:
-  terraform-validate:
-    name: Terraform — ${{ matrix.environment }}
+  terraform:
+    name: "Terraform: fmt + validate + plan + Checkov + tfsec"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: [dev, staging, prod]
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Terraform fmt check
+      - name: terraform fmt
         run: terraform fmt -check -recursive
         working-directory: infra/terraform
 
-      - name: Terraform init — ${{ matrix.environment }}
-        working-directory: infra/terraform/environments/${{ matrix.environment }}
+      - name: terraform init
+        working-directory: infra/terraform/environments/prod
         run: terraform init -backend=false
 
-      - name: Terraform validate — ${{ matrix.environment }}
-        working-directory: infra/terraform/environments/${{ matrix.environment }}
+      - name: terraform validate
+        working-directory: infra/terraform/environments/prod
         run: terraform validate
 
-      - name: Terraform plan — ${{ matrix.environment }}
-        working-directory: infra/terraform/environments/${{ matrix.environment }}
+      - name: terraform plan
+        working-directory: infra/terraform/environments/prod
         run: |
           terraform plan -detailed-exitcode -out=tfplan \
-            -var="env=${{ matrix.environment }}" \
-            -var="aws_region=${{ secrets.AWS_REGION }}" \
-            || EXIT_CODE=$?
-          if [ "${EXIT_CODE:-0}" -eq 1 ]; then exit 1; fi
+            -var="env=prod" \
+            -var="aws_region=${{ secrets.AWS_REGION }}" || EXIT=$?
+          if [ "${EXIT:-0}" -eq 1 ]; then exit 1; fi
         env:
           TF_LOG: WARN
 
-      - name: Checkov — ${{ matrix.environment }}
+      - name: Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: infra/terraform/environments/${{ matrix.environment }}
+          directory: infra/terraform/environments/prod
           framework: terraform
           soft_fail: false
           skip_check: CKV_AWS_7,CKV_AWS_144
 
-      - name: tfsec — ${{ matrix.environment }}
+      - name: tfsec
         uses: aquasecurity/tfsec-action@v1
         with:
-          working_directory: infra/terraform/environments/${{ matrix.environment }}
-          soft_fail: false
+          working_directory: infra/terraform/environments/prod
 
-  helm-lint:
-    name: Helm lint
+  dockerfile-lint:
+    name: "Docker: Hadolint"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
+      - name: Hadolint — backend Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          version: ${{ env.HELM_VERSION }}
+          dockerfile: apps/backend/Dockerfile
+          failure-threshold: warning
 
-      - name: Helm lint — rwa-backend
-        run: helm lint infra/helm/rwa-backend
-
-      - name: Helm lint — rwa-frontend
-        run: helm lint infra/helm/rwa-frontend
-
-      - name: Helm dependency update — rwa-platform
-        run: helm dependency update infra/helm/rwa-platform
-
-      - name: Helm lint — rwa-platform (dev values)
-        run: |
-          helm lint infra/helm/rwa-platform \
-            -f infra/helm/rwa-platform/values-dev.yaml
-
-      - name: Helm lint — rwa-platform (staging values)
-        run: |
-          helm lint infra/helm/rwa-platform \
-            -f infra/helm/rwa-platform/values-staging.yaml
-
-      - name: Helm lint — rwa-platform (prod values)
-        run: |
-          helm lint infra/helm/rwa-platform \
-            -f infra/helm/rwa-platform/values-prod.yaml
-
-  kubernetes-validate:
-    name: Kubernetes manifests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: kubeval
-        uses: instrumenta/kubeval-action@master
+      - name: Hadolint — frontend Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          files: infra/kubernetes/
-          ignore_missing_schemas: true
+          dockerfile: apps/frontend/Dockerfile
+          failure-threshold: warning

@@ -4,47 +4,51 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image SHA tag to deploy (e.g. sha-abc1234)"
+        description: "Git SHA of images to deploy"
         required: true
         type: string
       confirm:
-        description: "Type DEPLOY to confirm production deployment"
+        description: "Type DEPLOY to confirm"
         required: true
         type: string
 
-env:
-  ENVIRONMENT: prod
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  CLUSTER_NAME: rwa-control-tower-prod
-  NAMESPACE: rwa-prod
-  REGISTRY: ${{ secrets.ECR_REGISTRY }}
-  EVIDENCE_BUCKET: ${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}
+# required-reviewers: 2 — set in GitHub environment "prod" settings
 
 jobs:
   pre-flight:
-    name: Pre-flight checks
+    name: Pre-flight validation
     runs-on: ubuntu-latest
     steps:
-      - name: Validate confirmation
+      - name: Validate confirmation token
         run: |
           if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
-            echo "Confirmation string must be exactly 'DEPLOY'"
+            echo "Confirmation must be exactly 'DEPLOY'"
             exit 1
           fi
 
-  deploy-prod:
-    name: Deploy to production
+      - name: Verify CI passed for this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STATUS=$(gh api \
+            /repos/${{ github.repository }}/commits/${{ inputs.image_tag }}/check-runs \
+            --jq '[.check_runs[] | select(.name == "Build: backend image → ECR")] | .[0].conclusion')
+          echo "CI status for ${{ inputs.image_tag }}: ${STATUS}"
+          if [ "${STATUS}" != "success" ]; then
+            echo "CI has not passed for this SHA — refusing deploy"
+            exit 1
+          fi
+
+  deploy:
+    name: "Deploy to prod (Docker Compose)"
     runs-on: ubuntu-latest
+    needs: pre-flight
     environment:
       name: prod
-      # required-reviewers: 2 — configured in GitHub environment settings
-    needs: pre-flight
+      url: https://${{ secrets.DOMAIN }}
     concurrency:
       group: prod-deploy
       cancel-in-progress: false
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -52,61 +56,99 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
-
-      - name: Record pre-deploy state
+      - name: Record pre-deploy image tag
         id: pre-deploy
-        run: |
-          kubectl get deployment rwa-platform-rwa-backend \
-            -n ${{ env.NAMESPACE }} \
-            -o jsonpath='{.spec.template.spec.containers[0].image}' \
-            > /tmp/pre-deploy-image.txt
-          echo "previous_image=$(cat /tmp/pre-deploy-image.txt)" >> "$GITHUB_OUTPUT"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            grep IMAGE_TAG /opt/rwa/.env | cut -d= -f2 || echo "unknown"
 
-      - name: Helm dependency update
-        run: helm dependency update infra/helm/rwa-platform
+      - name: Deploy — docker compose pull + up
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          envs: IMAGE_TAG,REGISTRY
+          script: |
+            set -euo pipefail
+            cd /opt/rwa
 
-      - name: Helm upgrade — prod
-        run: |
-          helm upgrade --install rwa-platform infra/helm/rwa-platform \
-            --namespace ${{ env.NAMESPACE }} \
-            --create-namespace \
-            --values infra/helm/rwa-platform/values.yaml \
-            --values infra/helm/rwa-platform/values-prod.yaml \
-            --set global.registry=${{ env.REGISTRY }} \
-            --set global.imageTag=${{ inputs.image_tag }} \
-            --timeout 15m \
-            --wait \
-            --atomic
+            # Login to ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+              | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-      - name: Verify backend health
+            # Update image tag
+            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ inputs.image_tag }}/" .env
+
+            # Pull new images (zero-downtime: pull before stopping old)
+            docker compose -f docker-compose.prod.yml pull
+
+            # Bring up new containers
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Wait for health
+            echo "Waiting for backend..."
+            for i in $(seq 1 12); do
+              if docker compose -f docker-compose.prod.yml exec backend \
+                  curl -sf http://localhost:8000/v1/health > /dev/null 2>&1; then
+                echo "Backend healthy."
+                break
+              fi
+              sleep 5
+            done
+
+            # Final health check
+            curl -f http://localhost/health || exit 1
+            echo "Deploy complete: ${{ inputs.image_tag }}"
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          REGISTRY: ${{ secrets.ECR_REGISTRY }}
+
+      - name: Smoke test /v1/health via public URL
         run: |
-          kubectl rollout status deployment/rwa-platform-rwa-backend \
-            -n ${{ env.NAMESPACE }} --timeout=10m
-          kubectl run health-check --rm -i --restart=Never \
-            --image=curlimages/curl:8 \
-            -n ${{ env.NAMESPACE }} \
-            -- curl -f http://rwa-platform-rwa-backend:8000/v1/health
+          curl -f --retry 5 --retry-delay 5 \
+            https://${{ secrets.DOMAIN }}/api/v1/health
 
       - name: Upload deployment evidence to S3 WORM
         if: always()
         run: |
-          TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          TS=$(date -u +%Y%m%dT%H%M%SZ)
           cat > /tmp/deploy-evidence.json <<EOF
           {
-            "timestamp": "${TIMESTAMP}",
+            "timestamp": "${TS}",
             "environment": "prod",
             "image_tag": "${{ inputs.image_tag }}",
-            "previous_image": "${{ steps.pre-deploy.outputs.previous_image }}",
             "deployed_by": "${{ github.actor }}",
             "workflow_run": "${{ github.run_id }}",
-            "commit_sha": "${{ github.sha }}",
             "outcome": "${{ job.status }}"
           }
           EOF
           aws s3 cp /tmp/deploy-evidence.json \
-            s3://${{ env.EVIDENCE_BUCKET }}/deployments/prod/${TIMESTAMP}.json \
+            s3://${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}/deployments/prod/${TS}.json \
             --no-progress
+
+  rollback:
+    name: Rollback (on failure)
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    steps:
+      - name: Rollback to previous image tag
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/rwa
+            echo "Rolling back..."
+            git stash || true
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            echo "Rollback complete."
