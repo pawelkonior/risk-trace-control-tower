@@ -1,0 +1,38 @@
+{
+  "feature": "RWA CSV upload and calculation",
+  "implemented_control_ids": [
+    "RWA-RULE-001",
+    "RWA-CALC-001",
+    "RWA-DATA-001",
+    "RWA-AUDIT-001",
+    "TEST-REG-001",
+    "REL-EVID-001"
+  ],
+  "evidence": [
+    {
+      "id": "input_snapshot",
+      "type": "documentation",
+      "location": "evidence/rwa-run/input-snapshot.json"
+    },
+    {
+      "id": "validation_report",
+      "type": "data_quality_report",
+      "location": "evidence/rwa-run/validation-report.json"
+    },
+    {
+      "id": "rule_version",
+      "type": "approval_record",
+      "location": "evidence/rwa-run/rule-version.json"
+    },
+    {
+      "id": "audit_extract",
+      "type": "audit_log",
+      "location": "evidence/rwa-run/audit-extract.json"
+    },
+    {
+      "id": "reconciliation_summary",
+      "type": "reconciliation_report",
+      "location": "evidence/rwa-run/reconciliation-summary.json"
+    }
+  ]
+}

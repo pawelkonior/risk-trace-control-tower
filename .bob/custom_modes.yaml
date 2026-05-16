@@ -1,0 +1,65 @@
+version: 1
+project: risk-trace-control-tower
+
+global_instructions:
+  - Use bankRegulatoryControls before producing regulated Jira, GitHub, Confluence, release, or architecture output for RWA work.
+  - Ask for explicit user confirmation before writing to Jira, GitHub, or Confluence.
+  - Block or mark not ready any RWA work that lacks rule versioning, data lineage, audit logging, regulatory tests, and release evidence.
+  - Do not claim legal compliance, legal advice, or regulatory certification. Require qualified human review.
+
+mcp_servers:
+  bankRegulatoryControls:
+    required_for:
+      - regulated_jira_output
+      - regulated_github_output
+      - rwa_feature_planning
+      - rwa_architecture_review
+      - rwa_code_review
+      - release_readiness
+    allowed_tools:
+      - health_check
+      - get_regulatory_profile
+      - search_regulations
+      - match_controls
+      - review_feature_description
+      - review_architecture_text
+      - review_code_diff
+      - generate_acceptance_criteria
+      - generate_data_lineage_requirements
+      - generate_audit_log_requirements
+      - generate_test_obligations
+      - assess_release_readiness
+      - generate_regulatory_mapping_report
+      - generate_rwa_run_evidence_requirements
+      - explain_control
+
+workflows:
+  regulated_feature:
+    before_output:
+      - match_controls
+      - review_feature_description
+      - generate_acceptance_criteria
+    must_include:
+      - rule_version
+      - source_system
+      - input_hash
+      - calculation_trace_id
+      - audit_events
+      - regulatory_tests
+      - release_evidence
+  regulated_code_review:
+    before_output:
+      - review_code_diff
+    block_on:
+      - hardcoded_risk_weights
+      - missing_traceability_fields
+      - pii_logging
+      - missing_input_validation
+  release_gate:
+    before_output:
+      - assess_release_readiness
+      - generate_regulatory_mapping_report
+    block_on:
+      - fail_status
+      - missing_blocking_evidence
+      - unresolved_critical_findings

@@ -1,0 +1,6 @@
+diff --git a/apps/backend/src/rwa_calculator/calculator.py b/apps/backend/src/rwa_calculator/calculator.py
+@@
++risk_weight = 0.35
++def calculate_rwa(exposure):
++    console.log(exposure.customer_email)
++    return exposure.amount * risk_weight

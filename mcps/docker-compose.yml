@@ -1,0 +1,10 @@
+services:
+  bank-regulatory-controls-mcp:
+    build:
+      context: ./regulatory_mcp
+    image: bank-regulatory-controls-mcp:local
+    environment:
+      NODE_ENV: production
+    stdin_open: true
+    tty: false
+    command: ["node", "build/index.js"]
