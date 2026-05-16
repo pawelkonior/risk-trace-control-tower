@@ -19,9 +19,6 @@ jobs:
   deploy:
     name: "Manual deploy: ${{ inputs.image_tag || 'latest' }}"
     runs-on: ubuntu-latest
-    environment:
-      name: prod
-      url: https://${{ vars.DOMAIN }}
     concurrency:
       group: prod-deploy
       cancel-in-progress: false
