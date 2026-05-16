@@ -38,7 +38,4 @@ tmp/
 temp/
 *.tmp
 
-# Data directory (if used for local storage)
-data/
-
 # Made with Bob

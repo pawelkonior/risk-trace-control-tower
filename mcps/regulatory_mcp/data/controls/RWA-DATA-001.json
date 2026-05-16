@@ -1,0 +1,82 @@
+{
+  "id": "RWA-DATA-001",
+  "title": "Input Data Completeness and Validation",
+  "description": "All input data for RWA calculations must be complete, validated against schema, and missing or invalid data must be flagged and handled appropriately.",
+  "severity": "high",
+  "domains": ["data_quality", "credit_risk"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P4",
+      "rationale": "Risk data must be complete and capture all material exposures"
+    },
+    {
+      "regulation_id": "CRR3",
+      "article": "Article 143",
+      "rationale": "Accurate RWA calculation requires complete and valid input data"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "data_quality_report",
+      "description": "Data quality validation report for each calculation run",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "test_result",
+      "description": "Schema validation test results",
+      "required_for_release": true,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-DATA-001-AC1",
+      "description": "All required fields are present in input data",
+      "verification_method": "automated_test",
+      "pass_threshold": "100% completeness"
+    },
+    {
+      "id": "RWA-DATA-001-AC2",
+      "description": "Input data passes Pandera schema validation",
+      "verification_method": "automated_test"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-DATA-001-TO1",
+      "description": "Schema validation tests for all input data types",
+      "test_type": "unit_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "library",
+      "description": "Use Pandera for DataFrame schema validation",
+      "example": "import pandera as pa; schema.validate(df)"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Silently ignoring missing or invalid data",
+      "risk": "Incomplete data leads to incorrect RWA calculations",
+      "alternative": "Raise validation errors and log data quality issues"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "generate_evidence",
+      "trigger_condition": "Data validation runs",
+      "description": "Generate data quality report",
+      "automated": true
+    }
+  ],
+  "tags": ["data-quality", "validation"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

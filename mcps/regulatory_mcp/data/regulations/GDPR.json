@@ -1,0 +1,84 @@
+{
+  "id": "GDPR",
+  "title": "General Data Protection Regulation (GDPR)",
+  "type": "regulation",
+  "jurisdiction": "EU",
+  "status": "active",
+  "as_of": "2018-05-25T00:00:00.000Z",
+  "applies_to": ["all_financial_entities"],
+  "domains": [
+    "data_protection",
+    "governance",
+    "audit_trail",
+    "ict_security"
+  ],
+  "summary": "EU regulation on data protection and privacy for individuals within the European Union. Establishes requirements for processing personal data including consent, data subject rights, security measures, and breach notification.",
+  "key_requirements": [
+    {
+      "id": "GDPR-ART-5",
+      "article": "Article 5",
+      "title": "Principles relating to processing of personal data",
+      "description": "Personal data must be processed lawfully, fairly, transparently, with purpose limitation, data minimization, accuracy, storage limitation, integrity and confidentiality",
+      "mandatory": true
+    },
+    {
+      "id": "GDPR-ART-25",
+      "article": "Article 25",
+      "title": "Data protection by design and by default",
+      "description": "Implement appropriate technical and organizational measures to ensure data protection principles",
+      "mandatory": true
+    },
+    {
+      "id": "GDPR-ART-30",
+      "article": "Article 30",
+      "title": "Records of processing activities",
+      "description": "Maintain records of all personal data processing activities",
+      "mandatory": true
+    },
+    {
+      "id": "GDPR-ART-32",
+      "article": "Article 32",
+      "title": "Security of processing",
+      "description": "Implement appropriate technical and organizational measures to ensure security of personal data",
+      "mandatory": true
+    },
+    {
+      "id": "GDPR-ART-33",
+      "article": "Article 33",
+      "title": "Notification of personal data breach",
+      "description": "Notify supervisory authority of personal data breaches within 72 hours",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "security",
+      "description": "Implement encryption, pseudonymization, and access controls for personal data",
+      "priority": "critical"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Log all access to and processing of personal data",
+      "priority": "critical"
+    },
+    {
+      "area": "data_model",
+      "description": "Design data model with data minimization and purpose limitation principles",
+      "priority": "high"
+    },
+    {
+      "area": "architecture",
+      "description": "Implement privacy by design and by default in system architecture",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "official_text",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679",
+      "citation": "Regulation (EU) 2016/679 on the protection of natural persons",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

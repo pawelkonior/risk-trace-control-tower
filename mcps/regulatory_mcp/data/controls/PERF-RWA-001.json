@@ -1,0 +1,68 @@
+{
+  "id": "PERF-RWA-001",
+  "title": "RWA Calculation Performance",
+  "description": "RWA calculations must meet performance requirements to support timely risk reporting and decision-making.",
+  "severity": "medium",
+  "domains": ["performance", "capital_adequacy"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P5",
+      "rationale": "Timeliness requires adequate calculation performance"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "performance_benchmark",
+      "description": "Performance benchmark results",
+      "required_for_release": false,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "PERF-RWA-001-AC1",
+      "description": "Batch calculation completes within SLA",
+      "verification_method": "automated_test",
+      "pass_threshold": "< 5 minutes for 1000 exposures"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "PERF-RWA-001-TO1",
+      "description": "Performance benchmark tests",
+      "test_type": "performance_test",
+      "frequency": "per_release",
+      "automated": true,
+      "blocking": false
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "code_pattern",
+      "description": "Use vectorized operations for batch calculations"
+    },
+    {
+      "category": "tool",
+      "description": "Profile code to identify bottlenecks"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Row-by-row processing in loops",
+      "risk": "Poor performance for large datasets",
+      "alternative": "Use vectorized pandas/numpy operations"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "notify_compliance",
+      "trigger_condition": "Performance degrades significantly",
+      "description": "Alert on performance regression",
+      "automated": true
+    }
+  ],
+  "tags": ["performance", "rwa"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

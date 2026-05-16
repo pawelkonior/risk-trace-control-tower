@@ -1,0 +1,77 @@
+{
+  "id": "INTERNAL_RULE_GOVERNANCE",
+  "title": "Internal Rule Governance and Change Management Policy",
+  "type": "policy",
+  "jurisdiction": "INTERNAL",
+  "status": "active",
+  "as_of": "2025-01-01T00:00:00.000Z",
+  "applies_to": ["internal_policy"],
+  "domains": [
+    "governance",
+    "audit_trail",
+    "data_quality"
+  ],
+  "summary": "Internal policy governing changes to regulatory calculation rules, reference data, and jurisdiction overlays. Ensures all rule changes are documented, approved, tested, and auditable.",
+  "key_requirements": [
+    {
+      "id": "RULE-VERSION",
+      "title": "Rule versioning",
+      "description": "All regulatory rules and reference data must be versioned with effective dates",
+      "mandatory": true
+    },
+    {
+      "id": "RULE-APPROVAL",
+      "title": "Change approval",
+      "description": "Rule changes require approval from risk management and compliance before implementation",
+      "mandatory": true
+    },
+    {
+      "id": "RULE-TESTING",
+      "title": "Rule testing",
+      "description": "All rule changes must be validated against golden test cases before deployment",
+      "mandatory": true
+    },
+    {
+      "id": "RULE-AUDIT",
+      "title": "Audit trail",
+      "description": "Complete audit trail of all rule changes including who, what, when, why",
+      "mandatory": true
+    },
+    {
+      "id": "RULE-RECON",
+      "title": "Reconciliation",
+      "description": "Rule changes must include reconciliation between old and new calculations",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "data_model",
+      "description": "Implement versioned reference data with effective date tracking",
+      "priority": "critical"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Log all rule changes with full context and approval chain",
+      "priority": "critical"
+    },
+    {
+      "area": "testing",
+      "description": "Maintain golden test suite for regression testing of rule changes",
+      "priority": "critical"
+    },
+    {
+      "area": "calculation_engine",
+      "description": "Support parallel calculation with old and new rules for reconciliation",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "internal",
+      "citation": "Internal Rule Governance Policy v1.3",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": false
+}

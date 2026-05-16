@@ -1,0 +1,61 @@
+{
+  "description": "Maps artifact types (feature, code diff, architecture, release) to relevant engineering controls",
+  "mappings": {
+    "feature": [
+      "RWA-CALC-001",
+      "RWA-DATA-001",
+      "TEST-REG-001",
+      "SEC-INPUT-001",
+      "ARCH-ADR-001"
+    ],
+    "code_diff": [
+      "RWA-CALC-001",
+      "TEST-REG-001",
+      "SEC-INPUT-001",
+      "SEC-LOG-001"
+    ],
+    "architecture": [
+      "ARCH-ADR-001",
+      "RWA-RULE-001",
+      "SEC-ACCESS-001"
+    ],
+    "release_readiness": [
+      "RWA-CALC-001",
+      "RWA-RULE-001",
+      "RWA-AUDIT-001",
+      "RWA-REPORT-001",
+      "SEC-INPUT-001",
+      "TEST-REG-001",
+      "REL-EVID-001"
+    ],
+    "data_model": [
+      "RWA-DATA-001",
+      "RWA-RULE-001",
+      "SEC-LOG-001"
+    ],
+    "api_endpoint": [
+      "SEC-INPUT-001",
+      "SEC-ACCESS-001",
+      "RWA-AUDIT-001"
+    ],
+    "calculation_logic": [
+      "RWA-CALC-001",
+      "RWA-AUDIT-001",
+      "TEST-REG-001",
+      "PERF-RWA-001"
+    ],
+    "reference_data": [
+      "RWA-RULE-001"
+    ],
+    "reporting": [
+      "RWA-REPORT-001",
+      "RWA-AUDIT-001"
+    ],
+    "security": [
+      "SEC-INPUT-001",
+      "SEC-LOG-001",
+      "SEC-ACCESS-001",
+      "DORA-ICT-001"
+    ]
+  }
+}
