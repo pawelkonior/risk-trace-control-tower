@@ -1,0 +1,35 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: denyprivileged
+  annotations:
+    description: "Deny privileged=true or allowPrivilegeEscalation=true. Checks spec.containers and spec.initContainers."
+spec:
+  crd:
+    spec:
+      names:
+        kind: DenyPrivileged
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package denyprivileged
+
+      violation[{"msg": msg}] {
+        container := input_containers[_]
+        container.securityContext.privileged == true
+        msg := sprintf("Container '%v' must not run as privileged — set securityContext.privileged=false", [container.name])
+      }
+
+      violation[{"msg": msg}] {
+        container := input_containers[_]
+        container.securityContext.allowPrivilegeEscalation == true
+        msg := sprintf("Container '%v' must set allowPrivilegeEscalation=false in securityContext", [container.name])
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.containers[_]
+      }
+
+      input_containers[c] {
+        c := input.review.object.spec.initContainers[_]
+      }

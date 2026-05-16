@@ -1,0 +1,9 @@
+dependencies:
+- name: rwa-backend
+  repository: file://../rwa-backend
+  version: 0.1.0
+- name: rwa-frontend
+  repository: file://../rwa-frontend
+  version: 0.1.0
+digest: sha256:d033a754cf06616ed815b1955394922701f1510017eb98c15441382eded1a697
+generated: "2026-05-16T22:49:44.083736+02:00"

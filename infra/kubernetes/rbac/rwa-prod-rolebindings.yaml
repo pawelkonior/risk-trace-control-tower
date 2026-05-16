@@ -1,0 +1,123 @@
+# ClusterRole: rwa-deployer
+# Grants deployment-level access — scoped to namespace via RoleBinding (not ClusterRoleBinding)
+# No cluster-admin granted to any application service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rwa-deployer
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["services", "configmaps", "pods", "pods/log", "endpoints", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+# RoleBinding: github-actions-deployer — prod
+# Binds ClusterRole to github-actions SA within rwa-prod only (not cluster-wide)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-deployer
+  namespace: rwa-prod
+subjects:
+- kind: ServiceAccount
+  name: github-actions
+  namespace: rwa-prod
+roleRef:
+  kind: ClusterRole
+  name: rwa-deployer
+  apiGroup: rbac.authorization.k8s.io
+---
+# ServiceAccount: github-actions (rwa-prod)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions
+  namespace: rwa-prod
+---
+# Role: rwa-readonly — get/list/watch only, for monitoring SA
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rwa-readonly
+  namespace: rwa-prod
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+---
+# RoleBinding: monitoring-readonly
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: monitoring-readonly
+  namespace: rwa-prod
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+roleRef:
+  kind: Role
+  name: rwa-readonly
+  apiGroup: rbac.authorization.k8s.io
+---
+# RoleBinding: github-actions-deployer — dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-deployer
+  namespace: rwa-dev
+subjects:
+- kind: ServiceAccount
+  name: github-actions
+  namespace: rwa-dev
+roleRef:
+  kind: ClusterRole
+  name: rwa-deployer
+  apiGroup: rbac.authorization.k8s.io
+---
+# ServiceAccount: github-actions (rwa-dev)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions
+  namespace: rwa-dev
+---
+# Role: rwa-readonly — dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rwa-readonly
+  namespace: rwa-dev
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+---
+# RoleBinding: monitoring-readonly — dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: monitoring-readonly
+  namespace: rwa-dev
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+roleRef:
+  kind: Role
+  name: rwa-readonly
+  apiGroup: rbac.authorization.k8s.io

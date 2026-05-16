@@ -1,0 +1,36 @@
+global:
+  registry: ""
+  imageTag: ""  # set via --set global.imageTag=sha-<commit> — NEVER hardcode
+
+replicaCount: 2
+
+image:
+  repository: rwa-control-tower-backend
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  minAvailable: 1
+
+env:
+  RWA_CORS_ORIGINS: "*"
+  RWA_LOG_LEVEL: INFO
+  RWA_ENV: production

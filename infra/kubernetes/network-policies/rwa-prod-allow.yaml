@@ -1,0 +1,246 @@
+# ============================================================================
+# rwa-backend: allow ingress from ingress-nginx and rwa-frontend on port 8000
+# also allow Prometheus scrape from monitoring namespace
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-backend
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: rwa-backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  - from:
+    - podSelector:
+        matchLabels:
+          app: rwa-frontend
+    ports:
+    - protocol: TCP
+      port: 8000
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+# ============================================================================
+# rwa-frontend: allow ingress from ingress-nginx on port 80 (NOT 3000)
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-frontend
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: rwa-frontend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+---
+# ============================================================================
+# rwa-backend: egress to RDS (5432), Redis (6379), MSK (9094), OTEL (4317)
+# DB subnets: 10.1.21.0/24, 10.1.22.0/24, 10.1.23.0/24 (prod VPC)
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-datastores
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: rwa-backend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.1.21.0/24
+    - ipBlock:
+        cidr: 10.1.22.0/24
+    - ipBlock:
+        cidr: 10.1.23.0/24
+    ports:
+    - protocol: TCP
+      port: 5432  # RDS PostgreSQL
+    - protocol: TCP
+      port: 6379  # ElastiCache Redis
+    - protocol: TCP
+      port: 9094  # MSK Kafka SASL/TLS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+      podSelector:
+        matchLabels:
+          app: otel-collector
+    ports:
+    - protocol: TCP
+      port: 4317  # OTEL gRPC
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# ============================================================================
+# rwa-frontend: egress to kube-dns only
+# rwa-frontend MUST NOT reach RDS (5432) — blocked by absence of allow rule
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-dns
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: rwa-frontend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# ============================================================================
+# rwa-worker: egress to Kafka (9094) and Redis (6379)
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-egress
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: rwa-worker
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.1.21.0/24
+    - ipBlock:
+        cidr: 10.1.22.0/24
+    - ipBlock:
+        cidr: 10.1.23.0/24
+    ports:
+    - protocol: TCP
+      port: 9094  # MSK Kafka
+    - protocol: TCP
+      port: 6379  # ElastiCache Redis
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# ============================================================================
+# audit-sink: egress to Kafka (9094) only
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-audit-sink-egress
+  namespace: rwa-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: audit-sink
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.1.21.0/24
+    - ipBlock:
+        cidr: 10.1.22.0/24
+    - ipBlock:
+        cidr: 10.1.23.0/24
+    ports:
+    - protocol: TCP
+      port: 9094  # MSK Kafka
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# ============================================================================
+# All pods: allow DNS egress (kube-dns, kube-system)
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-egress-dns
+  namespace: rwa-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
