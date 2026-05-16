@@ -3,3 +3,9 @@
 
 .vscode
 .idea
+
+# infra
+**/.terraform/
+  **/.terraform.lock.hcl
+  *.tfstate
+  *.tfstate.backup
