@@ -626,3 +626,52 @@ resource "aws_iam_role_policy" "external_secrets_secrets" {
     }]
   })
 }
+
+# ============================================================================
+# AWS Load Balancer Controller IAM Policy
+# ============================================================================
+
+data "aws_iam_policy" "aws_load_balancer_controller" {
+  arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
+}
+
+# ============================================================================
+# IRSA Role - AWS Load Balancer Controller
+# ============================================================================
+
+resource "aws_iam_role" "aws_load_balancer_controller" {
+  name = "${var.project_name}-${var.environment}-aws-lb-controller-irsa"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.cluster.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name           = "${var.project_name}-${var.environment}-aws-lb-controller-irsa"
+      Environment    = var.environment
+      Project        = var.project_name
+      ServiceAccount = "aws-load-balancer-controller"
+      Namespace      = "kube-system"
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
+  policy_arn = data.aws_iam_policy.aws_load_balancer_controller.arn
+  role       = aws_iam_role.aws_load_balancer_controller.name
+}

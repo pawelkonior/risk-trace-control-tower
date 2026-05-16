@@ -1,0 +1,1 @@
+{"mcpServers":{"atlassian":{"command":"npx","args":["-y","mcp-remote","https://mcp.atlassian.com/v1/mcp","--transport","http-first"],"alwaysAllow":["getJiraIssue"]}}}

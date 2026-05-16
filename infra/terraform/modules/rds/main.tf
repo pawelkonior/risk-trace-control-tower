@@ -186,8 +186,9 @@ resource "aws_secretsmanager_secret_version" "database_url" {
   # CRITICAL REQUIREMENT: Key must be RWA_DATABASE_URL (NOT DATABASE_URL)
   # CRITICAL REQUIREMENT: Driver must be psycopg (NOT asyncpg)
   # Format: postgresql+psycopg://rwa_admin:{password}@{endpoint}/rwa_steering
+  # Password is URL-encoded to prevent special characters from breaking the connection string
   secret_string = jsonencode({
-    RWA_DATABASE_URL = "postgresql+psycopg://${aws_db_instance.main.username}:${random_password.master.result}@${aws_db_instance.main.endpoint}/${aws_db_instance.main.db_name}"
+    RWA_DATABASE_URL = "postgresql+psycopg://${aws_db_instance.main.username}:${urlencode(random_password.master.result)}@${aws_db_instance.main.endpoint}/${aws_db_instance.main.db_name}"
   })
 
   lifecycle {
