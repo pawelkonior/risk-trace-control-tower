@@ -167,17 +167,15 @@ npm run build
 node build/index.js
 ```
 
-## Bob and Copilot Integration
+## Bob Integration
 
 Repository-level assets are provided for regulated RWA workflows:
 
 - `.bob/mcp.example.json` provides a tracked `bankRegulatoryControls` template
 - local `.bob/mcp.json` can register `bankRegulatoryControls` for Bob
 - `.bob/custom_modes.yaml` defines gated RWA workflows and allowed tools
-- `.github/copilot-instructions.md` requires MCP checks before regulated output
-- `.github/skills/rwa-regulatory-workflow.md` documents context, planning, build, review, and ship evidence steps
 
-Bob/Copilot instructions require confirmation before Jira, GitHub, or Confluence writes and block RWA work missing rule versioning, lineage, audit logs, tests, or evidence.
+Bob instructions require confirmation before Jira, GitHub, or Confluence writes and block RWA work missing rule versioning, lineage, audit logs, tests, or evidence.
 
 ### Bob Usage Instructions
 
