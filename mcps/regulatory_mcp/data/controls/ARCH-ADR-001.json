@@ -1,0 +1,68 @@
+{
+  "id": "ARCH-ADR-001",
+  "title": "Architecture Decision Records",
+  "description": "All significant architectural decisions must be documented in ADR format with rationale, alternatives considered, and consequences.",
+  "severity": "medium",
+  "domains": ["architecture", "governance"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "INTERNAL_SDLC",
+      "requirement_id": "SDLC-DOCS",
+      "rationale": "Documentation requirements include architectural decisions"
+    },
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P2",
+      "rationale": "Data architecture must be documented"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "architecture_decision",
+      "description": "ADR documents for significant decisions",
+      "required_for_release": false,
+      "automated": false
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "ARCH-ADR-001-AC1",
+      "description": "ADRs exist for all significant architectural changes",
+      "verification_method": "code_review"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "ARCH-ADR-001-TO1",
+      "description": "Review ADR completeness",
+      "test_type": "audit_test",
+      "frequency": "per_release",
+      "automated": false,
+      "blocking": false
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "documentation",
+      "description": "Use ADR template with context, decision, consequences sections"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Making architectural changes without documentation",
+      "risk": "Loss of architectural knowledge and rationale",
+      "alternative": "Document decisions in ADR format"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "require_review",
+      "trigger_condition": "Architectural changes detected",
+      "description": "Require ADR review",
+      "automated": true
+    }
+  ],
+  "tags": ["architecture", "documentation"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

@@ -1,0 +1,84 @@
+{
+  "id": "SEC-INPUT-001",
+  "title": "Input Validation and Sanitization",
+  "description": "All external inputs must be validated and sanitized to prevent injection attacks and ensure data integrity.",
+  "severity": "critical",
+  "domains": ["ict_security", "data_quality"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "DORA",
+      "article": "Article 6",
+      "requirement_id": "DORA-ART-6",
+      "rationale": "ICT risk management requires input validation"
+    },
+    {
+      "regulation_id": "EBA_ICT_SECURITY",
+      "requirement_id": "EBA-ICT-SEC",
+      "rationale": "Information security requires input sanitization"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "security_scan",
+      "description": "Static analysis security scan results",
+      "required_for_release": true,
+      "automated": true
+    },
+    {
+      "type": "test_result",
+      "description": "Input validation test results",
+      "required_for_release": true,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "SEC-INPUT-001-AC1",
+      "description": "All API inputs are validated against schema",
+      "verification_method": "automated_test"
+    },
+    {
+      "id": "SEC-INPUT-001-AC2",
+      "description": "No SQL injection vulnerabilities detected",
+      "verification_method": "security_test"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "SEC-INPUT-001-TO1",
+      "description": "Security scanning with Bandit",
+      "test_type": "security_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "library",
+      "description": "Use Pydantic for input validation in Python"
+    },
+    {
+      "category": "tool",
+      "description": "Run Bandit security scanner in CI/CD"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Trusting user input without validation",
+      "risk": "Injection attacks and data corruption",
+      "alternative": "Always validate and sanitize inputs"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Security scan fails",
+      "description": "Block merge on security issues",
+      "automated": true
+    }
+  ],
+  "tags": ["security", "input-validation", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

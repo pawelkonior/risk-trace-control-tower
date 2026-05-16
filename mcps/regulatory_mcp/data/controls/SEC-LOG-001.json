@@ -1,0 +1,76 @@
+{
+  "id": "SEC-LOG-001",
+  "title": "Secure Logging and Sensitive Data Protection",
+  "description": "Logging must not expose sensitive data (PII, credentials, financial data). All logs must be secure and comply with data protection regulations.",
+  "severity": "high",
+  "domains": ["ict_security", "data_protection", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "GDPR",
+      "article": "Article 32",
+      "requirement_id": "GDPR-ART-32",
+      "rationale": "Security of processing requires protection of personal data in logs"
+    },
+    {
+      "regulation_id": "EBA_ICT_SECURITY",
+      "requirement_id": "EBA-ICT-SEC",
+      "rationale": "Information security includes secure logging practices"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "code_review",
+      "description": "Code review confirming no sensitive data in logs",
+      "required_for_release": true,
+      "automated": false
+    },
+    {
+      "type": "security_scan",
+      "description": "Security scan for sensitive data exposure",
+      "required_for_release": true,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "SEC-LOG-001-AC1",
+      "description": "No PII, credentials, or sensitive financial data in logs",
+      "verification_method": "code_review"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "SEC-LOG-001-TO1",
+      "description": "Test log output for sensitive data leakage",
+      "test_type": "security_test",
+      "frequency": "per_release",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "code_pattern",
+      "description": "Use structured logging with field redaction",
+      "example": "logger.info('User action', user_id=hash(user_id))"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Logging full request/response bodies",
+      "risk": "Exposure of sensitive data in logs",
+      "alternative": "Log only non-sensitive metadata"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "require_review",
+      "trigger_condition": "Logging code changes detected",
+      "description": "Require security review",
+      "automated": true
+    }
+  ],
+  "tags": ["security", "logging", "gdpr"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

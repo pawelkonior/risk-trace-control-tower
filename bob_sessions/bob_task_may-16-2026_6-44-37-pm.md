@@ -3262,7 +3262,7 @@ Now let me check the backend application to understand the database connection r
 1 | RWA_ENV=local
 2 | RWA_LOG_LEVEL=INFO
 3 | RWA_CORS_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080
-4 | RWA_DATABASE_URL=postgresql+psycopg://rwa:rwa_local_password@127.0.0.1:5432/rwa_steering
+4 | RWA_DATABASE_URL=postgresql+psycopg://rwa:<hidden_data>@127.0.0.1:5432/rwa_steering
 </content>
 </file>
 </files>

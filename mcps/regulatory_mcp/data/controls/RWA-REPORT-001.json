@@ -1,0 +1,77 @@
+{
+  "id": "RWA-REPORT-001",
+  "title": "Regulatory Report Validation and Submission",
+  "description": "All regulatory reports must pass validation rules before submission and include supporting evidence package.",
+  "severity": "critical",
+  "domains": ["reporting", "audit_trail"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "EBA_REPORTING_4",
+      "requirement_id": "EBA-VALIDATION",
+      "rationale": "Reports must pass EBA validation rules before submission"
+    },
+    {
+      "regulation_id": "INTERNAL_AUDIT_EVIDENCE",
+      "requirement_id": "AUDIT-REPORT-PACK",
+      "rationale": "Each report requires supporting evidence package"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "test_result",
+      "description": "Validation rule test results",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "documentation",
+      "description": "Evidence package for each report submission",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-REPORT-001-AC1",
+      "description": "All EBA validation rules pass",
+      "verification_method": "automated_test",
+      "pass_threshold": "100% pass rate"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-REPORT-001-TO1",
+      "description": "Test report generation and validation",
+      "test_type": "integration_test",
+      "frequency": "per_release",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "tool",
+      "description": "Implement EBA validation rules as automated checks"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Submitting reports without validation",
+      "risk": "Regulatory rejection and compliance issues",
+      "alternative": "Always validate before submission"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Report validation fails",
+      "description": "Block if validation rules fail",
+      "automated": true
+    }
+  ],
+  "tags": ["reporting", "validation", "critical"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

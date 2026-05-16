@@ -1,0 +1,78 @@
+{
+  "id": "INTERNAL_SDLC",
+  "title": "Internal Secure Software Development Lifecycle Policy",
+  "type": "policy",
+  "jurisdiction": "INTERNAL",
+  "status": "active",
+  "as_of": "2025-01-01T00:00:00.000Z",
+  "applies_to": ["internal_policy"],
+  "domains": [
+    "governance",
+    "testing",
+    "ict_security",
+    "audit_trail"
+  ],
+  "summary": "Internal policy establishing secure software development lifecycle requirements for all financial calculation and reporting systems. Mandates code review, testing, security scanning, and documentation standards.",
+  "key_requirements": [
+    {
+      "id": "SDLC-CODE-REVIEW",
+      "title": "Mandatory code review",
+      "description": "All code changes must be reviewed by at least one qualified reviewer before merge",
+      "mandatory": true
+    },
+    {
+      "id": "SDLC-TESTING",
+      "title": "Automated testing",
+      "description": "Minimum 70% code coverage with unit and integration tests",
+      "mandatory": true
+    },
+    {
+      "id": "SDLC-SECURITY",
+      "title": "Security scanning",
+      "description": "All code must pass static analysis security scanning before deployment",
+      "mandatory": true
+    },
+    {
+      "id": "SDLC-DOCS",
+      "title": "Documentation requirements",
+      "description": "All features must include technical documentation and architecture decision records",
+      "mandatory": true
+    },
+    {
+      "id": "SDLC-RELEASE",
+      "title": "Release approval",
+      "description": "Production releases require approval from technical lead and compliance officer",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "testing",
+      "description": "Implement comprehensive test suite with coverage reporting",
+      "priority": "critical"
+    },
+    {
+      "area": "security",
+      "description": "Integrate security scanning tools into CI/CD pipeline",
+      "priority": "critical"
+    },
+    {
+      "area": "architecture",
+      "description": "Document all architectural decisions in ADR format",
+      "priority": "high"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Track all code reviews, approvals, and deployments",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "internal",
+      "citation": "Internal SDLC Policy v2.1",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": false
+}

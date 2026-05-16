@@ -1,0 +1,93 @@
+{
+  "id": "RWA-RULE-001",
+  "title": "Regulatory Rule Version Control and Change Management",
+  "description": "All regulatory calculation rules and reference data must be versioned, approved, and changes must be fully auditable with reconciliation between versions.",
+  "severity": "critical",
+  "domains": ["governance", "audit_trail", "data_quality"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "INTERNAL_RULE_GOVERNANCE",
+      "requirement_id": "RULE-VERSION",
+      "rationale": "Rule versioning ensures traceability of regulatory calculation changes"
+    },
+    {
+      "regulation_id": "BCBS239",
+      "requirement_id": "BCBS239-P3",
+      "rationale": "Accuracy and integrity require controlled rule changes"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "change_log",
+      "description": "Complete change log of all rule modifications",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "approval_record",
+      "description": "Approval records for rule changes",
+      "required_for_release": true,
+      "automated": false,
+      "retention_period": "7 years"
+    },
+    {
+      "type": "reconciliation_report",
+      "description": "Reconciliation between old and new rule calculations",
+      "required_for_release": true,
+      "automated": true,
+      "retention_period": "7 years"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "RWA-RULE-001-AC1",
+      "description": "All reference data files include version and effective date",
+      "verification_method": "automated_test"
+    },
+    {
+      "id": "RWA-RULE-001-AC2",
+      "description": "Rule changes pass reconciliation tests",
+      "verification_method": "automated_test",
+      "pass_threshold": "100% reconciliation"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "RWA-RULE-001-TO1",
+      "description": "Validate reference data schema and versioning",
+      "test_type": "unit_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "architecture",
+      "description": "Store reference data in versioned JSON files with manifest"
+    },
+    {
+      "category": "process",
+      "description": "Require pull request approval from compliance team for rule changes"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Modifying reference data files directly in production",
+      "risk": "Bypasses approval and audit trail requirements",
+      "alternative": "All changes must go through version control and approval process"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "require_review",
+      "trigger_condition": "Reference data files modified",
+      "description": "Require compliance team review",
+      "automated": true
+    }
+  ],
+  "tags": ["rules", "governance", "versioning"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

@@ -1,0 +1,84 @@
+{
+  "id": "CRR3",
+  "title": "Capital Requirements Regulation III (CRR3) / CRD6",
+  "type": "regulation",
+  "jurisdiction": "EU",
+  "status": "active",
+  "as_of": "2025-01-01T00:00:00.000Z",
+  "applies_to": ["credit_institution", "investment_firm"],
+  "domains": [
+    "capital_adequacy",
+    "credit_risk",
+    "market_risk",
+    "operational_risk",
+    "reporting"
+  ],
+  "summary": "EU implementation of Basel III final reforms, establishing comprehensive capital requirements for credit institutions and investment firms. Includes standardized and internal model approaches for credit, market, and operational risk.",
+  "key_requirements": [
+    {
+      "id": "CRR3-ART-92",
+      "article": "Article 92",
+      "title": "Own funds requirements",
+      "description": "Institutions must maintain minimum capital ratios: CET1 4.5%, Tier 1 6%, Total Capital 8%",
+      "mandatory": true
+    },
+    {
+      "id": "CRR3-ART-143",
+      "article": "Article 143",
+      "title": "Calculation of risk-weighted exposure amounts",
+      "description": "Standardized approach for credit risk with detailed risk weights by exposure class",
+      "mandatory": true
+    },
+    {
+      "id": "CRR3-ART-325",
+      "article": "Article 325",
+      "title": "Market risk capital requirements",
+      "description": "Fundamental Review of Trading Book (FRTB) requirements for market risk",
+      "mandatory": true
+    },
+    {
+      "id": "CRR3-ART-430",
+      "article": "Article 430",
+      "title": "Reporting requirements",
+      "description": "Regular reporting to competent authorities on capital, liquidity, and risk metrics",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "calculation_engine",
+      "description": "Implement standardized approach for credit risk RWA calculation with jurisdiction-specific overlays",
+      "priority": "critical"
+    },
+    {
+      "area": "data_model",
+      "description": "Support exposure classification, collateral valuation, and netting set identification",
+      "priority": "critical"
+    },
+    {
+      "area": "reporting",
+      "description": "Generate COREP templates for regulatory reporting",
+      "priority": "high"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Maintain complete audit trail of all RWA calculations and parameter changes",
+      "priority": "critical"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "official_text",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32013R0575",
+      "citation": "Regulation (EU) No 575/2013 as amended by CRR3",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    },
+    {
+      "type": "guidance",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/single-rulebook/interactive-single-rulebook",
+      "citation": "EBA Interactive Single Rulebook",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

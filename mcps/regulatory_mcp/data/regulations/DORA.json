@@ -1,0 +1,90 @@
+{
+  "id": "DORA",
+  "title": "Digital Operational Resilience Act (DORA)",
+  "type": "regulation",
+  "jurisdiction": "EU",
+  "status": "active",
+  "as_of": "2025-01-17T00:00:00.000Z",
+  "applies_to": ["credit_institution", "investment_firm", "insurance_company", "all_financial_entities"],
+  "domains": [
+    "ict_security",
+    "operational_risk",
+    "governance",
+    "testing"
+  ],
+  "summary": "EU regulation establishing uniform requirements for digital operational resilience of financial entities. Covers ICT risk management, incident reporting, testing, third-party risk, and information sharing.",
+  "key_requirements": [
+    {
+      "id": "DORA-ART-6",
+      "article": "Article 6",
+      "title": "ICT risk management framework",
+      "description": "Financial entities must have sound, comprehensive ICT risk management framework",
+      "mandatory": true
+    },
+    {
+      "id": "DORA-ART-11",
+      "article": "Article 11",
+      "title": "Business continuity and disaster recovery",
+      "description": "Comprehensive business continuity policy and disaster recovery plans for ICT systems",
+      "mandatory": true
+    },
+    {
+      "id": "DORA-ART-17",
+      "article": "Article 17",
+      "title": "ICT-related incident reporting",
+      "description": "Report major ICT-related incidents to competent authorities within strict timelines",
+      "mandatory": true
+    },
+    {
+      "id": "DORA-ART-24",
+      "article": "Article 24",
+      "title": "Digital operational resilience testing",
+      "description": "Regular testing of ICT systems including threat-led penetration testing",
+      "mandatory": true
+    },
+    {
+      "id": "DORA-ART-28",
+      "article": "Article 28",
+      "title": "Third-party ICT service provider management",
+      "description": "Comprehensive framework for managing ICT third-party risk",
+      "mandatory": true
+    }
+  ],
+  "engineering_implications": [
+    {
+      "area": "security",
+      "description": "Implement comprehensive security controls, monitoring, and incident response",
+      "priority": "critical"
+    },
+    {
+      "area": "testing",
+      "description": "Establish regular security testing program including penetration testing",
+      "priority": "critical"
+    },
+    {
+      "area": "audit_logging",
+      "description": "Maintain detailed logs of all ICT incidents and security events",
+      "priority": "critical"
+    },
+    {
+      "area": "architecture",
+      "description": "Design resilient architecture with redundancy and failover capabilities",
+      "priority": "high"
+    }
+  ],
+  "source_references": [
+    {
+      "type": "official_text",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32022R2554",
+      "citation": "Regulation (EU) 2022/2554 on digital operational resilience",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    },
+    {
+      "type": "guidance",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/digital-operational-resilience-act-dora",
+      "citation": "EBA DORA Implementation Guidance",
+      "accessed_date": "2025-01-15T00:00:00.000Z"
+    }
+  ],
+  "requires_human_review": true
+}

@@ -1,0 +1,64 @@
+{
+  "id": "DORA-ICT-001",
+  "title": "ICT Resilience Testing",
+  "description": "Regular testing of ICT systems including security testing, performance testing, and disaster recovery testing.",
+  "severity": "high",
+  "domains": ["ict_security", "testing", "operational_risk"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "DORA",
+      "article": "Article 24",
+      "requirement_id": "DORA-ART-24",
+      "rationale": "Digital operational resilience requires regular testing"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "test_result",
+      "description": "ICT resilience test results",
+      "required_for_release": true,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "DORA-ICT-001-AC1",
+      "description": "All critical systems pass resilience tests",
+      "verification_method": "automated_test"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "DORA-ICT-001-TO1",
+      "description": "Quarterly resilience testing",
+      "test_type": "integration_test",
+      "frequency": "quarterly",
+      "automated": true,
+      "blocking": false
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "process",
+      "description": "Schedule regular resilience testing"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Skipping resilience tests",
+      "risk": "Undetected system vulnerabilities",
+      "alternative": "Maintain regular testing schedule"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "create_ticket",
+      "trigger_condition": "Resilience test due",
+      "description": "Create ticket for resilience testing",
+      "automated": true
+    }
+  ],
+  "tags": ["dora", "testing", "resilience"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

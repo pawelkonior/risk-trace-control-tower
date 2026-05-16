@@ -1,0 +1,64 @@
+{
+  "id": "TEST-REG-001",
+  "title": "Regulatory Test Coverage",
+  "description": "Maintain minimum 70% test coverage with comprehensive unit and integration tests for all regulatory calculation logic.",
+  "severity": "high",
+  "domains": ["testing", "governance"],
+  "regulatory_basis": [
+    {
+      "regulation_id": "INTERNAL_SDLC",
+      "requirement_id": "SDLC-TESTING",
+      "rationale": "SDLC policy requires 70% test coverage"
+    }
+  ],
+  "required_evidence": [
+    {
+      "type": "test_result",
+      "description": "Test coverage report",
+      "required_for_release": true,
+      "automated": true
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "TEST-REG-001-AC1",
+      "description": "Test coverage >= 70%",
+      "verification_method": "automated_test",
+      "pass_threshold": "70%"
+    }
+  ],
+  "test_obligations": [
+    {
+      "id": "TEST-REG-001-TO1",
+      "description": "Run test suite with coverage",
+      "test_type": "unit_test",
+      "frequency": "per_commit",
+      "automated": true,
+      "blocking": true
+    }
+  ],
+  "implementation_hints": [
+    {
+      "category": "tool",
+      "description": "Use pytest-cov for coverage reporting"
+    }
+  ],
+  "anti_patterns": [
+    {
+      "description": "Writing tests without assertions",
+      "risk": "False sense of test coverage",
+      "alternative": "Write meaningful tests with assertions"
+    }
+  ],
+  "bob_actions": [
+    {
+      "action_type": "block_merge",
+      "trigger_condition": "Coverage below 70%",
+      "description": "Block merge on low coverage",
+      "automated": true
+    }
+  ],
+  "tags": ["testing", "coverage"],
+  "created_at": "2025-01-15T00:00:00.000Z",
+  "updated_at": "2025-01-15T00:00:00.000Z"
+}

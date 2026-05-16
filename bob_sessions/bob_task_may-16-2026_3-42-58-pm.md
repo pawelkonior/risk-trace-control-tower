@@ -1093,7 +1093,7 @@ IMPORTANT: When task status changes, remember to call the `update_todo_list` too
  70 | Compose starts Postgres first and injects `RWA_DATABASE_URL` into the backend:
  71 | 
  72 | ```text
- 73 | postgresql+psycopg://rwa:rwa_local_password@postgres:5432/rwa_steering
+ 73 | postgresql+psycopg://rwa:<hidden_data>@postgres:5432/rwa_steering
  74 | ```
  75 | 
  76 | The container exposes the calculator API on `http://127.0.0.1:8000`. When running the backend
@@ -1490,7 +1490,7 @@ IMPORTANT: When task status changes, remember to call the `update_todo_list` too
  4 |     environment:
  5 |       POSTGRES_DB: ${POSTGRES_DB:-rwa_steering}
  6 |       POSTGRES_USER: ${POSTGRES_USER:-rwa}
- 7 |       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rwa_local_password}
+ 7 |       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-<hidden_data>}
  8 |     ports:
  9 |       - "${POSTGRES_PORT:-5432}:5432"
 10 |     healthcheck:
@@ -1517,7 +1517,7 @@ IMPORTANT: When task status changes, remember to call the `update_todo_list` too
 31 |       RWA_ENV: ${RWA_ENV:-docker}
 32 |       RWA_LOG_LEVEL: ${RWA_LOG_LEVEL:-INFO}
 33 |       RWA_CORS_ORIGINS: ${RWA_CORS_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:5173,http://localhost:5173}
-34 |       RWA_DATABASE_URL: ${RWA_DATABASE_URL:-postgresql+psycopg://rwa:rwa_local_password@postgres:5432/rwa_steering}
+34 |       RWA_DATABASE_URL: ${RWA_DATABASE_URL:-postgresql+psycopg://rwa:<hidden_data>@postgres:5432/rwa_steering}
 35 |     ports:
 36 |       - "${BACKEND_PORT:-8000}:8000"
 37 |     healthcheck:
