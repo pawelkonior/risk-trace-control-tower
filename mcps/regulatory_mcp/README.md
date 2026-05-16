@@ -65,13 +65,47 @@ mcps/regulatory_mcp/
 
 ## Available Tools
 
-### get_server_info
+The server exposes 15 MVP read-only tools:
 
-Get information about the regulatory MCP server.
+- `health_check`
+- `get_regulatory_profile`
+- `search_regulations`
+- `match_controls`
+- `review_feature_description`
+- `review_architecture_text`
+- `review_code_diff`
+- `generate_acceptance_criteria`
+- `generate_data_lineage_requirements`
+- `generate_audit_log_requirements`
+- `generate_test_obligations`
+- `assess_release_readiness`
+- `generate_regulatory_mapping_report`
+- `generate_rwa_run_evidence_requirements`
+- `explain_control`
 
-**Input:** None
+All tools return `content` and `structuredContent`, include input/output schemas, and are annotated as read-only/idempotent.
 
-**Output:** JSON object with server metadata including name, version, project root, and data directory.
+## Resources and Prompts
+
+Resources:
+
+- `regulations://index`
+- `regulations://<REGULATION_ID>`
+- `controls://index`
+- `controls://domain/<DOMAIN>`
+- `examples://feature`
+- `examples://architecture`
+- `examples://code_diff`
+- `examples://release_evidence`
+
+Prompts:
+
+- `feature_review`
+- `architecture_review`
+- `code_review`
+- `data_lineage_design`
+- `audit_log_design`
+- `regulatory_mapping_report`
 
 ## Configuration
 
@@ -81,6 +115,129 @@ The server configuration is managed in `src/config.ts` and includes:
 - `dataDir`: Directory for local data storage
 - `serverName`: Server identifier
 - `serverVersion`: Current version
+
+## Docker
+
+Build and run the MCP container from this directory:
+
+```bash
+docker build -t bank-regulatory-controls-mcp .
+docker run --rm -i bank-regulatory-controls-mcp
+```
+
+The image uses a Node 20 multi-stage build, copies `build/` and `data/`, and starts the STDIO MCP server with:
+
+```bash
+node build/index.js
+```
+
+It does not expose an HTTP endpoint.
+
+## Docker Compose
+
+From the parent `mcps/` directory:
+
+```bash
+docker compose build bank-regulatory-controls-mcp
+docker compose run --rm -T bank-regulatory-controls-mcp
+```
+
+For clients that support command plus args, a Compose-based command can be configured as:
+
+```json
+{
+  "command": "docker",
+  "args": [
+    "compose",
+    "-f",
+    "mcps/docker-compose.yml",
+    "run",
+    "--rm",
+    "-T",
+    "bank-regulatory-controls-mcp"
+  ]
+}
+```
+
+If an MCP client cannot keep `docker compose run` attached as a long-running STDIO process, use the local fallback:
+
+```bash
+cd mcps/regulatory_mcp
+npm run build
+node build/index.js
+```
+
+## Bob and Copilot Integration
+
+Repository-level assets are provided for regulated RWA workflows:
+
+- `.bob/mcp.example.json` provides a tracked `bankRegulatoryControls` template
+- local `.bob/mcp.json` can register `bankRegulatoryControls` for Bob
+- `.bob/custom_modes.yaml` defines gated RWA workflows and allowed tools
+- `.github/copilot-instructions.md` requires MCP checks before regulated output
+- `.github/skills/rwa-regulatory-workflow.md` documents context, planning, build, review, and ship evidence steps
+
+Bob/Copilot instructions require confirmation before Jira, GitHub, or Confluence writes and block RWA work missing rule versioning, lineage, audit logs, tests, or evidence.
+
+### Bob Usage Instructions
+
+#### Regulated Jira Story
+
+Before writing or updating Jira content for RWA, call `bankRegulatoryControls.match_controls` and `bankRegulatoryControls.generate_acceptance_criteria`.
+
+Include rule versioning, data lineage, audit events, regulatory test obligations, release evidence, source references, and a human review note. Ask for confirmation before writing to Jira.
+
+#### Architecture Review
+
+Before approving architecture for RWA, call `bankRegulatoryControls.review_architecture_text`.
+
+Block the output when the architecture hardcodes risk weights, lacks a rule registry, misses lineage/audit/data-quality/reporting-date controls, or omits resilience requirements.
+
+#### Code Review Gate
+
+Before GitHub PR output for RWA code, call `bankRegulatoryControls.review_code_diff`.
+
+Block hardcoded risk weights, embedded exposure classification, missing traceability fields, PII-like logging, input validation gaps, and rounding without policy.
+
+#### Release Evidence Gate
+
+Before release notes or approval, call `bankRegulatoryControls.assess_release_readiness` and `bankRegulatoryControls.generate_regulatory_mapping_report`.
+
+Do not claim legal compliance. State that qualified compliance, legal, risk, or audit review is required.
+
+### Bob Demo Prompts
+
+#### Health Check
+
+Call `bankRegulatoryControls.health_check` with `include_corpus: true` and summarize the corpus counts.
+
+#### Feature Review
+
+Review this feature before Jira output:
+
+```text
+Build CSV upload for exposure data and RWA calculation. The story should include validation, lineage, rule versioning, audit logs, tests, and release evidence.
+```
+
+Use `bankRegulatoryControls.review_feature_description`, then generate acceptance criteria.
+
+#### Code Review
+
+Review this diff before GitHub output:
+
+```diff
++ const riskWeight = 0.35;
++ logger.info(customer.email);
++ export function calculateRwa(exposure) {
++   return exposure.amount * riskWeight;
++ }
+```
+
+Use `bankRegulatoryControls.review_code_diff` and report blocking findings.
+
+#### Release Report
+
+Generate a regulatory mapping report for RWA CSV upload and calculation with implemented controls and evidence. Include the human review note and do not claim legal compliance.
 
 ## Regulatory Corpus
 
@@ -155,6 +312,7 @@ Test coverage includes:
 - Schema validation (13 tests)
 - Corpus loading and validation (25 tests)
 - Corpus store queries and caching (32 tests)
+- Regulation search, control matching, review, generation, release readiness, report, resource, prompt, and in-memory MCP tool coverage
 - Configuration (2 tests)
 
 ## License
