@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: prod
-      url: https://${{ secrets.DOMAIN }}
+      url: https://${{ vars.DOMAIN }}
     concurrency:
       group: prod-deploy
       cancel-in-progress: false
