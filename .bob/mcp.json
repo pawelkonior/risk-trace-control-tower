@@ -1,8 +1,4 @@
 {
-  "_risktrace": {
-    "generatedBy": ".mcp/scripts/generate-mcp-config.sh",
-    "secretPolicy": "MCP config uses environment references and local launcher env files only."
-  },
   "mcpServers": {
     "atlassian": {
       "args": [
@@ -15,24 +11,52 @@
       "command": "npx"
     },
     "owaspZap": {
-      "command": ".mcp/scripts/run-zap-mcp.sh",
-      "env": {
-        "ZAP_MCP_ENV_FILE": "/home/cezary/projects/risk-trace-control-tower/.mcp/local/zap-mcp.env"
-      }
+      "args": [
+        "compose",
+        "--env-file",
+        ".mcp/.env",
+        "-f",
+        ".mcp/docker-compose.yml",
+        "--profile",
+        "mcp",
+        "run",
+        "--rm",
+        "-T",
+        "owasp-zap-mcp"
+      ],
+      "command": "docker"
     },
     "risktrace-sonarqube": {
-      "command": ".mcp/scripts/run-sonarqube-mcp.sh",
-      "env": {
-        "SONARQUBE_MCP_ENV_FILE": "/home/cezary/projects/risk-trace-control-tower/.mcp/local/sonarqube-mcp.env",
-        "SONARQUBE_TOKEN": "${env:SONARQUBE_TOKEN}",
-        "SONARQUBE_URL": "http://127.0.0.1:9000"
-      }
+      "args": [
+        "compose",
+        "--env-file",
+        ".mcp/.env",
+        "-f",
+        ".mcp/docker-compose.yml",
+        "--profile",
+        "mcp",
+        "run",
+        "--rm",
+        "-T",
+        "sonarqube-mcp"
+      ],
+      "command": "docker"
     },
     "sonatype-guide": {
-      "command": ".mcp/scripts/run-sonatype-guide-mcp.sh",
-      "env": {
-        "SONATYPE_GUIDE_MCP_TOKEN": "${env:SONATYPE_GUIDE_MCP_TOKEN}"
-      }
+      "args": [
+        "compose",
+        "--env-file",
+        ".mcp/.env",
+        "-f",
+        ".mcp/docker-compose.yml",
+        "--profile",
+        "mcp",
+        "run",
+        "--rm",
+        "-T",
+        "sonatype-guide-mcp"
+      ],
+      "command": "docker"
     }
   }
 }

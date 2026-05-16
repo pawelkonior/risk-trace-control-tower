@@ -5,28 +5,36 @@ Docker Compose runtime under `apps/`.
 
 ## Local MCP Tooling
 
-Repository-local MCP-assisted quality and security tooling lives in `.mcp/`.
+Repository-local MCP-assisted quality and security tooling lives in `.mcp/`. IBM Bob reads the
+committed `.bob/mcp.json` directly; there is no generated MCP client configuration.
 
-Use it for local SonarQube, OWASP ZAP, IBM Bob/VS Code MCP config generation, and optional
-Sonatype Guide dependency guidance:
+Create local MCP secrets once:
 
 ```bash
-.mcp/scripts/setup-sonarqube.sh
-.mcp/scripts/scan-sonarqube.sh
-.mcp/scripts/start-zap.sh
-source .mcp/scripts/generate-mcp-config.sh
+cp .mcp/.env.example .mcp/.env
 ```
 
-The generator updates committed `.bob/mcp.json` for IBM Bob and local `.vscode/mcp.json` for VS
-Code. `.bob/mcp.json` contains only non-secret values, environment variable references, and local
-launcher env-file paths; local secret env files remain ignored by git. OWASP ZAP MCP is served by
-the official ZAP MCP Integration add-on running inside the ZAP container, bridged to Bob through a
-local launcher script. Sonatype Guide uses an environment variable reference and existing entries
-are preserved when `SONATYPE_GUIDE_MCP_TOKEN` is not exported in your shell. OWASP ZAP setup starts
-the daemon only; active scans require explicit developer action.
+Edit `.mcp/.env` with local SonarQube, ZAP, and optional Sonatype values. The file is ignored by
+git.
 
-Use `source .mcp/scripts/generate-mcp-config.sh` when launching direct HTTP MCP clients from the
-same shell; it writes `.mcp/local/mcp-env.sh` and exports the generated local MCP secrets
-immediately. IBM Bob's ZAP launcher can read `.mcp/local/zap-mcp.env` directly.
+Start and initialize local SonarQube:
+
+```bash
+docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml up -d sonarqube
+docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile setup run --rm -T sonarqube-init
+```
+
+Start OWASP ZAP:
+
+```bash
+docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml up -d zap
+```
+
+Run SonarQube analysis when needed:
+
+```bash
+docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile scan run --rm -T sonar-scan-backend
+docker compose --env-file .mcp/.env -f .mcp/docker-compose.yml --profile scan run --rm -T sonar-scan-frontend
+```
 
 See `.mcp/README.md` for the full workflow.

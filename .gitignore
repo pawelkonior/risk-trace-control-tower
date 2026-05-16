@@ -12,9 +12,7 @@ __pycache__/
 *.tfstate
 *.tfstate.backup
 
-# Local MCP secrets and editor-specific MCP files. Shared MCP tooling lives under .mcp.
-.mcp/generated/
-.mcp/local/
+# Local MCP secrets. Shared MCP tooling lives under .mcp.
 .mcp/.env
 .mcp/.env.*
 !.mcp/.env.example
