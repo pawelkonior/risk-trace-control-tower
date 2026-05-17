@@ -125,19 +125,106 @@ class LangfuseConfig(BaseModel):
         )
 
 
+class WatsonxConfig(BaseModel):
+    """Configuration for IBM watsonx.ai LLM integration."""
+
+    watsonx_project_id: str | None = Field(
+        default=None,
+        description="IBM watsonx.ai project ID",
+    )
+    watsonx_apikey: str | None = Field(
+        default=None,
+        description="IBM Cloud IAM API key",
+    )
+    watsonx_url: str = Field(
+        default="https://eu-de.ml.cloud.ibm.com",
+        description="Regional watsonx.ai endpoint URL",
+    )
+    watsonx_model_id: str = Field(
+        default="meta-llama/llama-3-3-70b-instruct",
+        description="Foundation model ID",
+    )
+    watsonx_api_version: str = Field(
+        default="2024-03-14",
+        description="Watsonx API version",
+    )
+    watsonx_max_new_tokens: int = Field(
+        default=2048,
+        ge=1,
+        le=4096,
+        description="Maximum tokens to generate",
+    )
+    watsonx_time_limit: int = Field(
+        default=60000,
+        ge=1000,
+        le=300000,
+        description="Generation time limit in milliseconds",
+    )
+    watsonx_http_timeout: int = Field(
+        default=120,
+        ge=10,
+        le=300,
+        description="HTTP request timeout in seconds",
+    )
+
+    @classmethod
+    def from_env(cls) -> WatsonxConfig:
+        """Load watsonx configuration from environment variables."""
+        # Support both prefixed and unprefixed env var names for .env compatibility
+        return cls(
+            watsonx_project_id=os.getenv("RWA_AGENTS_WATSONX_PROJECT_ID")
+            or os.getenv("WATSONX_PROJECT_ID"),
+            watsonx_apikey=os.getenv("RWA_AGENTS_WATSONX_APIKEY") or os.getenv("WATSONX_APIKEY"),
+            watsonx_url=os.getenv("RWA_AGENTS_WATSONX_URL")
+            or os.getenv("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com"),
+            watsonx_model_id=os.getenv("RWA_AGENTS_WATSONX_MODEL_ID")
+            or os.getenv("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct"),
+            watsonx_api_version=os.getenv("RWA_AGENTS_WATSONX_API_VERSION", "2024-03-14"),
+            watsonx_max_new_tokens=int(os.getenv("RWA_AGENTS_WATSONX_MAX_NEW_TOKENS", "2048")),
+            watsonx_time_limit=int(os.getenv("RWA_AGENTS_WATSONX_TIME_LIMIT", "60000")),
+            watsonx_http_timeout=int(os.getenv("RWA_AGENTS_WATSONX_HTTP_TIMEOUT", "120")),
+        )
+
+    def is_configured(self) -> bool:
+        """Check if watsonx is properly configured with credentials."""
+        return (
+            self.watsonx_project_id is not None
+            and self.watsonx_apikey is not None
+            and len(self.watsonx_project_id.strip()) > 0
+            and len(self.watsonx_apikey.strip()) > 0
+        )
+
+
 class RwaAgentsConfig(BaseModel):
     """Combined configuration for RWA agents workflow."""
 
+    llm_provider: str = Field(
+        default="deterministic",
+        description="LLM provider selection: 'deterministic' or 'watsonx'",
+    )
     guardrails: GuardrailConfig = Field(default_factory=GuardrailConfig)
     langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
+    watsonx: WatsonxConfig = Field(default_factory=WatsonxConfig)
 
     @classmethod
     def from_env(cls) -> RwaAgentsConfig:
         """Load complete configuration from environment variables."""
         return cls(
+            llm_provider=os.getenv("RWA_AGENTS_LLM_PROVIDER", "deterministic").strip().lower(),
             guardrails=GuardrailConfig.from_env(),
             langfuse=LangfuseConfig.from_env(),
+            watsonx=WatsonxConfig.from_env(),
         )
+
+    @property
+    def uses_watsonx(self) -> bool:
+        """Return whether the external watsonx runtime was explicitly selected."""
+        return self.llm_provider == "watsonx"
+
+    @property
+    def watsonx_configured(self) -> bool:
+        """Expose watsonx credential readiness for tests and diagnostics."""
+        return self.watsonx.is_configured()
 
 
 def _parse_bool(value: str) -> bool:

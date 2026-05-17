@@ -46,6 +46,8 @@ def test_valid_request_builds_agent_state_with_default_loop_limit() -> None:
     assert state["commentary_views"].executive_summary == ""
     assert state["guardrail_results"] == []
     assert state["final_commentary"] is None
+    assert state["llm_call_count"] == 0
+    assert state["total_token_count"] == 0
 
 
 def test_allowed_anonymized_identifiers_pass_validation() -> None:

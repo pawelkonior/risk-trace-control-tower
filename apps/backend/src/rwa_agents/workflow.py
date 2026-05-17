@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
 import warnings
-from typing import Any
+from collections import Counter
+from collections.abc import Iterable
+from decimal import Decimal
+from typing import Any, NamedTuple
 
 from langgraph.graph import END, START, StateGraph
 
@@ -14,6 +18,7 @@ from .schemas import (
     AgentFinding,
     CommentaryViews,
     FinalCommentary,
+    GuardrailResult,
     RecommendedAction,
     RwaAnalysisRequest,
     RwaAnalysisResponse,
@@ -23,6 +28,9 @@ from .schemas import (
 from .state import AgentState
 from .tools import analyze_data_quality, analyze_risk
 from .validation import build_agent_state
+from .watsonx import WatsonxClient, WatsonxError, WatsonxResponse, WatsonxResponseError
+
+logger = logging.getLogger(__name__)
 
 CHECKPOINTER = MemorySaverCheckpoint()
 
@@ -44,7 +52,7 @@ def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
     observability.node("AgentStateBuilt")
     CHECKPOINTER.put(request.request_id, dict(initial_state))
 
-    graph = _build_graph(request, guardrails, prompts, observability)
+    graph = _build_graph(request, config, guardrails, prompts, observability)
     final_state = graph.invoke(
         initial_state,
         {"configurable": {"thread_id": request.request_id}},
@@ -74,6 +82,7 @@ def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
 
 def _build_graph(
     request: RwaAnalysisRequest,
+    config: RwaAgentsConfig,
     guardrails: GuardrailService,
     prompts: PromptRegistry,
     observability: LocalObservability,
@@ -111,11 +120,13 @@ def _build_graph(
         }
 
     def data_analyst_agent(_state: AgentState) -> dict:
+        observability.node("DataAnalystAgent")
         observability.tool("DataTools")
         result = analyze_data_quality(request)
         return {"data_agent_result": result}
 
     def risk_expert_agent(_state: AgentState) -> dict:
+        observability.node("RiskExpertAgent")
         observability.tool("RiskTools")
         result = analyze_risk(request)
         return {"risk_agent_result": result}
@@ -177,10 +188,42 @@ def _build_graph(
             actions=state["recommended_actions"],
         )
         should_loop = not consensus_reached and state["loop_count"] < state["loop_limit"]
+        guardrail_results = [*state["guardrail_results"], supervisor_guardrail]
+        messages = state["messages"]
+        llm_call_count = state["llm_call_count"]
+        total_token_count = state["total_token_count"]
+
+        if not should_loop:
+            llm_result = _maybe_synthesize_with_watsonx(
+                request=request,
+                state=state,
+                deterministic_views=views,
+                consensus_reached=consensus_reached,
+                config=config,
+                guardrails=guardrails,
+                observability=observability,
+            )
+            views = llm_result.views
+            guardrail_results = [*guardrail_results, *llm_result.guardrail_results]
+            messages = [*messages, *llm_result.messages]
+            llm_call_count = llm_result.llm_call_count
+            total_token_count = llm_result.total_token_count
+            if llm_result.blocked:
+                return {
+                    "guardrail_results": guardrail_results,
+                    "guardrail_blocked": True,
+                    "llm_call_count": llm_call_count,
+                    "total_token_count": total_token_count,
+                    "next_agent": "GuardrailBlocked",
+                }
+
         return {
             "commentary_views": views,
             "consensus_reached": consensus_reached,
-            "guardrail_results": [*state["guardrail_results"], supervisor_guardrail],
+            "messages": messages,
+            "guardrail_results": guardrail_results,
+            "llm_call_count": llm_call_count,
+            "total_token_count": total_token_count,
             "next_agent": "AnalysisPhase" if should_loop else "FinalOutputGuard",
         }
 
@@ -217,6 +260,8 @@ def _build_graph(
                 "guardrail_blocked": True,
                 "next_agent": "GuardrailBlocked",
             }
+        observability.metadata.llm_call_count = state["llm_call_count"]
+        observability.metadata.total_token_count = state["total_token_count"]
         # Compute all required evaluation scores
         observability.compute_final_scores(dict(state))
         final.observability = observability.metadata
@@ -227,6 +272,7 @@ def _build_graph(
         }
 
     def guardrail_blocked(_state: AgentState) -> dict:
+        observability.node("GuardrailBlocked")
         final = _blocked_commentary(
             request,
             observability,
@@ -282,6 +328,262 @@ def _build_graph(
         builder.add_edge("GuardrailBlocked", "FinalStructuredResponse")
         builder.add_edge("FinalStructuredResponse", END)
         return builder.compile(checkpointer=CHECKPOINTER.langgraph_saver)
+
+
+class LlmSynthesisResult(NamedTuple):
+    views: CommentaryViews
+    guardrail_results: list[GuardrailResult]
+    blocked: bool
+    llm_call_count: int
+    total_token_count: int
+    messages: list[str]
+
+
+def _maybe_synthesize_with_watsonx(
+    *,
+    request: RwaAnalysisRequest,
+    state: AgentState,
+    deterministic_views: CommentaryViews,
+    consensus_reached: bool,
+    config: RwaAgentsConfig,
+    guardrails: GuardrailService,
+    observability: LocalObservability,
+) -> LlmSynthesisResult:
+    if not config.uses_watsonx:
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[],
+            blocked=False,
+            llm_call_count=state["llm_call_count"],
+            total_token_count=state["total_token_count"],
+            messages=[],
+        )
+
+    if not config.watsonx_configured:
+        logger.warning(
+            "Watsonx provider selected without credentials; using deterministic fallback."
+        )
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[],
+            blocked=False,
+            llm_call_count=state["llm_call_count"],
+            total_token_count=state["total_token_count"],
+            messages=["Watsonx is not configured; deterministic commentary was used."],
+        )
+
+    prompt = _build_watsonx_prompt(
+        request=request,
+        state=state,
+        deterministic_views=deterministic_views,
+        consensus_reached=consensus_reached,
+    )
+    input_guardrail = guardrails.scan("llm_input", prompt)
+    observability.guardrail(input_guardrail)
+    if input_guardrail.blocked:
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[input_guardrail],
+            blocked=True,
+            llm_call_count=state["llm_call_count"],
+            total_token_count=state["total_token_count"],
+            messages=[],
+        )
+
+    try:
+        client = WatsonxClient(
+            project_id=config.watsonx.watsonx_project_id or "",
+            api_key=config.watsonx.watsonx_apikey or "",
+            url=config.watsonx.watsonx_url,
+            model_id=config.watsonx.watsonx_model_id,
+            api_version=config.watsonx.watsonx_api_version,
+            max_new_tokens=config.watsonx.watsonx_max_new_tokens,
+            time_limit=config.watsonx.watsonx_time_limit,
+            http_timeout=config.watsonx.watsonx_http_timeout,
+        )
+        watsonx_response = client.chat(prompt)
+    except WatsonxResponseError as exc:
+        llm_call_count, total_token_count = _record_failed_watsonx_response(
+            state=state,
+            config=config,
+            observability=observability,
+            error=exc,
+        )
+        output_guardrail = guardrails.scan(
+            "llm_output",
+            exc.raw_text or "Malformed watsonx response was rejected before state update.",
+        )
+        observability.guardrail(output_guardrail)
+        if output_guardrail.blocked:
+            return LlmSynthesisResult(
+                views=deterministic_views,
+                guardrail_results=[input_guardrail, output_guardrail],
+                blocked=True,
+                llm_call_count=llm_call_count,
+                total_token_count=total_token_count,
+                messages=[],
+            )
+        logger.warning("Watsonx returned malformed commentary; using deterministic fallback.")
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[input_guardrail, output_guardrail],
+            blocked=False,
+            llm_call_count=llm_call_count,
+            total_token_count=total_token_count,
+            messages=["Watsonx response was not structured; deterministic commentary was used."],
+        )
+    except WatsonxError as exc:
+        logger.warning(
+            "Watsonx synthesis unavailable; using deterministic fallback: %s",
+            type(exc).__name__,
+        )
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[input_guardrail],
+            blocked=False,
+            llm_call_count=state["llm_call_count"],
+            total_token_count=state["total_token_count"],
+            messages=["Watsonx synthesis unavailable; deterministic commentary was used."],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Watsonx provider initialization failed; using deterministic fallback: %s",
+            type(exc).__name__,
+        )
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[input_guardrail],
+            blocked=False,
+            llm_call_count=state["llm_call_count"],
+            total_token_count=state["total_token_count"],
+            messages=["Watsonx synthesis unavailable; deterministic commentary was used."],
+        )
+
+    llm_call_count, total_token_count = _record_successful_watsonx_response(
+        state=state,
+        config=config,
+        observability=observability,
+        response=watsonx_response,
+    )
+    output_guardrail = guardrails.scan(
+        "llm_output",
+        {
+            "executive_summary": watsonx_response.executive_summary,
+            "cro_view": watsonx_response.cro_view,
+            "cfo_view": watsonx_response.cfo_view,
+        },
+    )
+    observability.guardrail(output_guardrail)
+    if output_guardrail.blocked:
+        return LlmSynthesisResult(
+            views=deterministic_views,
+            guardrail_results=[input_guardrail, output_guardrail],
+            blocked=True,
+            llm_call_count=llm_call_count,
+            total_token_count=total_token_count,
+            messages=[],
+        )
+
+    return LlmSynthesisResult(
+        views=CommentaryViews(
+            executive_summary=watsonx_response.executive_summary,
+            cro_view=watsonx_response.cro_view,
+            cfo_view=watsonx_response.cfo_view,
+        ),
+        guardrail_results=[input_guardrail, output_guardrail],
+        blocked=False,
+        llm_call_count=llm_call_count,
+        total_token_count=total_token_count,
+        messages=["Watsonx supervisor synthesis completed."],
+    )
+
+
+def _record_successful_watsonx_response(
+    *,
+    state: AgentState,
+    config: RwaAgentsConfig,
+    observability: LocalObservability,
+    response: WatsonxResponse,
+) -> tuple[int, int]:
+    token_count = response.token_usage.total_tokens
+    observability.llm(
+        provider="watsonx",
+        model_id=config.watsonx.watsonx_model_id,
+        token_count=token_count,
+    )
+    return state["llm_call_count"] + 1, state["total_token_count"] + token_count
+
+
+def _record_failed_watsonx_response(
+    *,
+    state: AgentState,
+    config: RwaAgentsConfig,
+    observability: LocalObservability,
+    error: WatsonxResponseError,
+) -> tuple[int, int]:
+    token_count = error.token_usage.total_tokens if error.token_usage is not None else 0
+    observability.llm(
+        provider="watsonx",
+        model_id=config.watsonx.watsonx_model_id,
+        token_count=token_count,
+    )
+    return state["llm_call_count"] + 1, state["total_token_count"] + token_count
+
+
+def _build_watsonx_prompt(
+    *,
+    request: RwaAnalysisRequest,
+    state: AgentState,
+    deterministic_views: CommentaryViews,
+    consensus_reached: bool,
+) -> str:
+    severity_counts = Counter(flag.severity for flag in state["validation_flags"])
+    flag_code_counts = Counter(flag.code for flag in state["validation_flags"])
+    action_priorities = Counter(action.priority for action in state["recommended_actions"])
+    finding_titles = [finding.title for finding in state["agent_findings"][:8]]
+    total_exposure = _sum_decimal(
+        record.exposure_amount for record in request.rwa_input_data if record.exposure_amount > 0
+    )
+    total_rwa = _sum_decimal(record.rwa_amount for record in request.rwa_output_results)
+    failed_validations = sum(1 for item in state["quantitative_validation"] if not item.passed)
+
+    return "\n".join(
+        [
+            "Synthesize executive-ready RWA commentary for bank reviewers.",
+            "Use only the summarized facts below. Do not invent facts.",
+            "Do not calculate RWA formulas; deterministic Python tools already did that.",
+            "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
+            "",
+            "Summarized deterministic facts:",
+            f"- input_record_count: {len(request.rwa_input_data)}",
+            f"- output_record_count: {len(request.rwa_output_results)}",
+            f"- total_positive_exposure: {total_exposure:.2f}",
+            f"- total_reported_rwa: {total_rwa:.2f}",
+            f"- analysis_loop_count: {state['loop_count']}",
+            f"- consensus_reached: {consensus_reached}",
+            f"- validation_severity_counts: {dict(severity_counts)}",
+            f"- validation_code_counts: {dict(flag_code_counts)}",
+            f"- quantitative_validation_count: {len(state['quantitative_validation'])}",
+            f"- failed_quantitative_validation_count: {failed_validations}",
+            f"- finding_titles: {finding_titles}",
+            f"- recommended_action_count: {len(state['recommended_actions'])}",
+            f"- recommended_action_priorities: {dict(action_priorities)}",
+            "",
+            "Deterministic baseline commentary:",
+            f"- executive_summary: {deterministic_views.executive_summary}",
+            f"- cro_view: {deterministic_views.cro_view}",
+            f"- cfo_view: {deterministic_views.cfo_view}",
+            "",
+            "Raw portfolio rows and direct identifiers are intentionally not provided.",
+        ]
+    )
+
+
+def _sum_decimal(values: Iterable[Decimal]) -> Decimal:
+    total = Decimal("0")
+    for value in values:
+        total += value
+    return total
 
 
 def _synthesize_views(

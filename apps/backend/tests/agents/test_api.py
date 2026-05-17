@@ -39,6 +39,11 @@ def test_agent_endpoint_returns_required_response_shape(agent_client: TestClient
     assert payload["final_commentary"]["source_label"] == "RiskTrace Intelligence"
     assert payload["final_commentary"]["recommended_actions"] == []
     assert payload["observability"]["guardrail_results"]
+    assert payload["observability"]["llm_call_count"] == 0
+    assert payload["observability"]["total_token_count"] == 0
+    first_guardrail = payload["observability"]["guardrail_results"][0]
+    assert "affected_node" in first_guardrail
+    assert "sanitized_text_used" in first_guardrail
     assert "guardrail_results" in payload["observability"]
     assert "guardrail_scans" not in payload["observability"]
     assert "llm_guard_enabled" not in payload

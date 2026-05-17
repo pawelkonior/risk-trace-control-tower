@@ -108,6 +108,9 @@ class GuardrailResult(AgentSchema):
     risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
     categories: list[str] = Field(default_factory=list)
     message: str = ""
+    affected_node: str | None = None
+    sanitized_text_used: bool = False
+    trace_ref: str | None = None
 
 
 class PromptUsage(AgentSchema):
