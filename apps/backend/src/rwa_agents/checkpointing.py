@@ -3,10 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-try:  # pragma: no cover - exercised only when langgraph is installed locally.
+try:
     from langgraph.checkpoint.memory import MemorySaver as LangGraphMemorySaver
-except Exception:  # pragma: no cover
-    LangGraphMemorySaver = None  # type: ignore[assignment]
+except ImportError:  # pragma: no cover - newer langgraph names the saver InMemorySaver.
+    from langgraph.checkpoint.memory import InMemorySaver as LangGraphMemorySaver
 
 
 class MemorySaverCheckpoint:
@@ -15,8 +15,12 @@ class MemorySaverCheckpoint:
     name = "MemorySaver"
 
     def __init__(self) -> None:
-        self._langgraph_saver = LangGraphMemorySaver() if LangGraphMemorySaver else None
+        self._langgraph_saver = LangGraphMemorySaver()
         self._states: dict[str, dict[str, Any]] = {}
+
+    @property
+    def langgraph_saver(self) -> Any:
+        return self._langgraph_saver
 
     def put(self, thread_id: str, state: dict[str, Any]) -> None:
         self._states[thread_id] = deepcopy(state)

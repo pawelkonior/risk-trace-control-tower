@@ -2,19 +2,39 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from decimal import Decimal
+from typing import Literal
 
 from .schemas import (
     AgentFinding,
     QuantitativeValidationItem,
+    ReactStep,
     RecommendedAction,
     RwaAnalysisRequest,
     ValidationFlag,
+    WorkerAnalysisResult,
 )
 
+AgentName = Literal["DataAnalystAgent", "RiskExpertAgent"]
 
-def analyze_data_quality(
-    request: RwaAnalysisRequest,
-) -> tuple[list[AgentFinding], list[ValidationFlag], list[RecommendedAction]]:
+
+def analyze_data_quality(request: RwaAnalysisRequest) -> WorkerAnalysisResult:
+    """Run DataAnalystAgent's internal ReAct-style deterministic tool sequence."""
+    agent: AgentName = "DataAnalystAgent"
+    react_steps = _react_steps(
+        agent=agent,
+        tool_name="DataTools",
+        selected_actions=[
+            "duplicate_asset_id_detection",
+            "missing_output_detection",
+            "missing_risk_parameter_detection",
+            "non_positive_exposure_check",
+            "missing_rating_detection",
+            "pd_lgd_range_check",
+            "exposure_concentration_analysis",
+        ],
+        observation=f"{len(request.rwa_input_data)} inputs and "
+        f"{len(request.rwa_output_results)} outputs inspected.",
+    )
     findings: list[AgentFinding] = []
     flags: list[ValidationFlag] = []
     actions: list[RecommendedAction] = []
@@ -24,11 +44,11 @@ def analyze_data_quality(
     duplicates = sorted(asset_id for asset_id, count in Counter(input_ids).items() if count > 1)
     if duplicates:
         flags.append(
-            ValidationFlag(
+            _flag(
                 code="DUPLICATE_ASSET_ID",
                 severity="critical",
                 message=f"Duplicate asset identifiers detected: {', '.join(duplicates)}",
-                source="DataAnalystAgent",
+                source_agent=agent,
             )
         )
         actions.append(
@@ -37,18 +57,27 @@ def analyze_data_quality(
                 label="Resolve duplicate anonymized asset identifiers before sign-off",
                 owner="Data Quality",
                 priority="high",
-                source_agent="DataAnalystAgent",
+                source_agent=agent,
             )
         )
 
     missing_outputs = sorted(set(input_ids) - output_ids)
     if missing_outputs:
         flags.append(
-            ValidationFlag(
+            _flag(
                 code="MISSING_OUTPUT",
                 severity="critical",
                 message=f"Missing calculated RWA output for {len(missing_outputs)} input records",
-                source="DataAnalystAgent",
+                source_agent=agent,
+            )
+        )
+        actions.append(
+            RecommendedAction(
+                id="dq-complete-calculator-output",
+                label="Re-run calculator for anonymized inputs without RWA output",
+                owner="RWA Operations",
+                priority="high",
+                source_agent=agent,
             )
         )
 
@@ -59,11 +88,11 @@ def analyze_data_quality(
     ]
     if missing_parameters:
         flags.append(
-            ValidationFlag(
+            _flag(
                 code="MISSING_RISK_PARAMETER",
                 severity="warning",
                 message=f"{len(missing_parameters)} records need risk weight or PD/LGD parameters",
-                source="DataAnalystAgent",
+                source_agent=agent,
             )
         )
         actions.append(
@@ -72,61 +101,119 @@ def analyze_data_quality(
                 label="Complete missing risk parameters for affected anonymized records",
                 owner="Risk Data",
                 priority="medium",
-                source_agent="DataAnalystAgent",
+                source_agent=agent,
             )
         )
 
-    total_exposure = sum(record.exposure_amount for record in request.rwa_input_data)
+    non_positive_exposures = [
+        record.asset_id for record in request.rwa_input_data if record.exposure_amount <= 0
+    ]
+    if non_positive_exposures:
+        flags.append(
+            _flag(
+                code="NON_POSITIVE_EXPOSURE",
+                severity="critical",
+                message=f"{len(non_positive_exposures)} records have non-positive exposure",
+                source_agent=agent,
+            )
+        )
+
+    missing_ratings = [record.asset_id for record in request.rwa_input_data if not record.rating]
+    if missing_ratings:
+        flags.append(
+            _flag(
+                code="MISSING_RATING",
+                severity="warning",
+                message=f"{len(missing_ratings)} records are missing external or internal rating",
+                source_agent=agent,
+            )
+        )
+
+    invalid_pd_lgd = [
+        record.asset_id
+        for record in request.rwa_input_data
+        if (record.pd is not None and not Decimal("0") <= record.pd <= Decimal("1"))
+        or (record.lgd is not None and not Decimal("0") <= record.lgd <= Decimal("1"))
+    ]
+    if invalid_pd_lgd:
+        flags.append(
+            _flag(
+                code="INVALID_PD_LGD",
+                severity="critical",
+                message=f"{len(invalid_pd_lgd)} records have PD or LGD outside [0, 1]",
+                source_agent=agent,
+            )
+        )
+
+    positive_exposure_total = sum(
+        record.exposure_amount for record in request.rwa_input_data if record.exposure_amount > 0
+    )
     concentration_threshold = Decimal("0.25")
     concentrated = [
         record
         for record in request.rwa_input_data
-        if total_exposure > 0 and record.exposure_amount / total_exposure >= concentration_threshold
+        if positive_exposure_total > 0
+        and record.exposure_amount > 0
+        and record.exposure_amount / positive_exposure_total >= concentration_threshold
     ]
     if concentrated:
         evidence = [
-            f"{record.asset_id}: {(record.exposure_amount / total_exposure):.2%}"
+            f"{record.asset_id}: {(record.exposure_amount / positive_exposure_total):.2%}"
             for record in concentrated[:5]
         ]
         findings.append(
             AgentFinding(
-                agent="DataAnalystAgent",
+                agent=agent,
                 kind="data_quality",
                 severity="warning",
                 title="Exposure concentration requires review",
                 detail=(
                     f"{len(concentrated)} anonymized exposures exceed "
-                    f"{concentration_threshold:.0%} of submitted exposure."
+                    f"{concentration_threshold:.0%} of submitted positive exposure."
                 ),
                 evidence=evidence,
+                react_steps=react_steps,
             )
         )
 
     if not flags:
         findings.append(
             AgentFinding(
-                agent="DataAnalystAgent",
+                agent=agent,
                 kind="data_quality",
                 severity="info",
                 title="Input completeness checks passed",
                 detail=(
-                    "No duplicate assets, missing outputs, or missing core risk "
-                    "parameters were found."
+                    "No duplicate assets, missing outputs, missing ratings, invalid "
+                    "exposures, or missing core risk parameters were found."
                 ),
                 evidence=[f"{len(request.rwa_input_data)} input records checked"],
+                react_steps=react_steps,
             )
         )
-    return findings, flags, actions
+
+    return WorkerAnalysisResult(
+        agent=agent,
+        findings=findings,
+        validation_flags=flags,
+        recommended_actions=actions,
+        react_steps=react_steps,
+    )
 
 
-def analyze_risk(
-    request: RwaAnalysisRequest,
-) -> tuple[
-    list[AgentFinding],
-    list[ValidationFlag],
-    list[RecommendedAction],
-    list[QuantitativeValidationItem],
-]:
+def analyze_risk(request: RwaAnalysisRequest) -> WorkerAnalysisResult:
+    """Run RiskExpertAgent's internal ReAct-style deterministic tool sequence."""
+    agent: AgentName = "RiskExpertAgent"
+    react_steps = _react_steps(
+        agent=agent,
+        tool_name="RiskTools",
+        selected_actions=[
+            "deterministic_rwa_validation",
+            "sector_rwa_driver_analysis",
+            "rwa_density_capital_buffer_screen",
+        ],
+        observation=f"{len(request.rwa_output_results)} output records inspected.",
+    )
     findings: list[AgentFinding] = []
     flags: list[ValidationFlag] = []
     actions: list[RecommendedAction] = []
@@ -141,7 +228,7 @@ def analyze_risk(
             output.risk_weight if output.risk_weight is not None else input_record.risk_weight
         )
         exposure = output.exposure_amount or input_record.exposure_amount
-        if risk_weight is None:
+        if risk_weight is None or exposure <= 0:
             continue
         expected = exposure * risk_weight
         variance = output.rwa_amount - expected
@@ -159,7 +246,7 @@ def analyze_risk(
         )
         if not passed:
             flags.append(
-                ValidationFlag(
+                _flag(
                     code="RWA_RECALCULATION_VARIANCE",
                     severity="critical",
                     asset_id=output.asset_id,
@@ -167,28 +254,53 @@ def analyze_risk(
                         f"Reported RWA differs from deterministic recalculation by "
                         f"{variance_pct:.2%}"
                     ),
-                    source="RiskExpertAgent",
+                    source_agent=agent,
                 )
             )
 
     sector_rwa: dict[str, Decimal] = defaultdict(Decimal)
+    asset_class_rwa: dict[str, Decimal] = defaultdict(Decimal)
+    total_positive_exposure = Decimal("0")
     for output in request.rwa_output_results:
         input_record = input_by_id.get(output.asset_id)
         if input_record is not None:
             sector_rwa[input_record.sector] += output.rwa_amount
+            asset_class_rwa[input_record.asset_class] += output.rwa_amount
+            if input_record.exposure_amount > 0:
+                total_positive_exposure += input_record.exposure_amount
     total_rwa = sum(sector_rwa.values(), Decimal("0"))
     if sector_rwa and total_rwa > 0:
         top_sector, top_amount = max(sector_rwa.items(), key=lambda item: item[1])
+        top_asset_class, top_asset_amount = max(asset_class_rwa.items(), key=lambda item: item[1])
         findings.append(
             AgentFinding(
-                agent="RiskExpertAgent",
+                agent=agent,
                 kind="risk",
                 severity="info" if top_amount / total_rwa < Decimal("0.4") else "warning",
                 title="Largest RWA driver identified",
                 detail=f"{top_sector} contributes {(top_amount / total_rwa):.2%} of submitted RWA.",
-                evidence=[f"Total submitted RWA: {total_rwa:.2f}"],
+                evidence=[
+                    f"Total submitted RWA: {total_rwa:.2f}",
+                    f"Top asset class: {top_asset_class} ({(top_asset_amount / total_rwa):.2%})",
+                ],
+                react_steps=react_steps,
             )
         )
+
+    if total_rwa > 0 and total_positive_exposure > 0:
+        rwa_density = total_rwa / total_positive_exposure
+        if rwa_density >= Decimal("0.75"):
+            findings.append(
+                AgentFinding(
+                    agent=agent,
+                    kind="risk",
+                    severity="warning",
+                    title="High RWA density may pressure capital buffer",
+                    detail=f"Portfolio RWA density is {rwa_density:.2%}.",
+                    evidence=["RWA density calculated as total RWA / positive exposure"],
+                    react_steps=react_steps,
+                )
+            )
 
     failed_validations = [item for item in validations if not item.passed]
     if failed_validations:
@@ -198,18 +310,84 @@ def analyze_risk(
                 label="Review deterministic RWA validation variances before publication",
                 owner="RWA Analytics",
                 priority="high",
-                source_agent="RiskExpertAgent",
+                source_agent=agent,
             )
         )
     elif validations:
         findings.append(
             AgentFinding(
-                agent="RiskExpertAgent",
+                agent=agent,
                 kind="validation",
                 severity="info",
                 title="Deterministic RWA validation passed",
                 detail=f"{len(validations)} reported RWA outputs reconciled inside materiality.",
                 evidence=[f"Materiality threshold: {request.materiality_threshold:.2%}"],
+                react_steps=react_steps,
             )
         )
-    return findings, flags, actions, validations
+
+    return WorkerAnalysisResult(
+        agent=agent,
+        findings=findings,
+        validation_flags=flags,
+        recommended_actions=actions,
+        quantitative_validation=validations,
+        react_steps=react_steps,
+    )
+
+
+def _flag(
+    *,
+    code: str,
+    severity: Literal["info", "warning", "critical"],
+    message: str,
+    source_agent: AgentName,
+    asset_id: str | None = None,
+) -> ValidationFlag:
+    return ValidationFlag(
+        code=code,
+        severity=severity,
+        message=message,
+        asset_id=asset_id,
+        source_agent=source_agent,
+        requires_human_intervention=severity == "critical",
+    )
+
+
+def _react_steps(
+    *,
+    agent: AgentName,
+    tool_name: str,
+    selected_actions: list[str],
+    observation: str,
+) -> list[ReactStep]:
+    return [
+        ReactStep(
+            phase="inspect_state",
+            action=f"{agent} inspected anonymized AgentState",
+            observation="Only anonymized risk and financial fields were used.",
+        ),
+        ReactStep(
+            phase="select_tool",
+            tool_name=tool_name,
+            action="Selected deterministic analysis actions",
+            observation=", ".join(selected_actions),
+        ),
+        ReactStep(
+            phase="execute_tool",
+            tool_name=tool_name,
+            action="Executed deterministic Python checks",
+            observation="No LLM formula calculation was used.",
+        ),
+        ReactStep(
+            phase="observe_result",
+            tool_name=tool_name,
+            action="Recorded tool observations",
+            observation=observation,
+        ),
+        ReactStep(
+            phase="emit_finding",
+            action="Emitted structured findings, flags, actions, and evidence",
+            observation="Worker output is structured for supervisor fan-in.",
+        ),
+    ]

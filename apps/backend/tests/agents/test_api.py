@@ -44,6 +44,21 @@ def test_agent_endpoint_returns_required_response_shape(agent_client: TestClient
     assert "llm_guard_enabled" not in payload
 
 
+def test_agent_endpoint_returns_stable_validation_flag_shape(agent_client: TestClient) -> None:
+    request_payload = valid_payload()
+    request_payload["rwa_output_results"][0]["rwa_amount"] = "625"
+
+    response = agent_client.post("/v1/agents/rwa-analysis/run", json=request_payload)
+
+    assert response.status_code == 200
+    payload = response.json()
+    flag = payload["validation_flags"][0]
+    assert flag["code"] == "RWA_RECALCULATION_VARIANCE"
+    assert flag["source_agent"] == "RiskExpertAgent"
+    assert flag["requires_human_intervention"] is True
+    assert "source" not in flag
+
+
 def test_agent_endpoint_rejects_pii_as_api_validation_error(
     agent_client: TestClient,
 ) -> None:
