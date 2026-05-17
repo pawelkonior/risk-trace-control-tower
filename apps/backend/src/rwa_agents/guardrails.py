@@ -273,7 +273,11 @@ class GuardrailService:
         return {
             "request_validation": "RequestValidation",
             "data_analyst_prompt": "DataAnalystAgent",
+            "data_analyst_llm_input": "DataAnalystAgent",
+            "data_analyst_llm_output": "DataAnalystAgent",
             "risk_expert_prompt": "RiskExpertAgent",
+            "risk_expert_llm_input": "RiskExpertAgent",
+            "risk_expert_llm_output": "RiskExpertAgent",
             "worker_outputs": "AnalysisFanIn",
             "supervisor_prompt": "SupervisorAgent",
             "llm_input": "SupervisorAgent",
@@ -292,10 +296,17 @@ class GuardrailService:
             "supervisor_output",
             "final_output",
             "worker_outputs",
+            "data_analyst_llm_output",
+            "risk_expert_llm_output",
         }
 
     def _output_scan_prompt(self, stage: str) -> str:
         """Provide factual context for output relevance scanners."""
+        if stage in {"data_analyst_llm_output", "risk_expert_llm_output"}:
+            return (
+                "Worker agent output must be concise structured RWA commentary grounded "
+                "in deterministic tool observations, validation flags, and recommended actions."
+            )
         if stage == "final_output":
             return (
                 "RWA executive commentary must be a structured JSON payload with "

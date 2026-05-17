@@ -94,15 +94,24 @@ def test_supervisor_uses_watsonx_when_enabled(monkeypatch) -> None:
     assert response.final_commentary.executive_summary == "watsonx executive summary"
     assert response.final_commentary.cro_view == "watsonx cro view"
     assert response.final_commentary.cfo_view == "watsonx cfo view"
-    assert response.observability.llm_call_count == 1
-    assert response.observability.total_token_count == 538
+    assert response.observability.llm_call_count == 3
+    assert response.observability.total_token_count == 1614
     assert response.observability.guardrail_block_count == 0
-    assert prompts
-    assert "Do not calculate RWA formulas" in prompts[0]
-    assert "Do not copy deterministic baseline sentences verbatim" in prompts[0]
-    assert "Use PLN as the monetary unit" in prompts[0]
-    assert "Raw portfolio rows and direct identifiers are intentionally not provided" in prompts[0]
-    assert "ASSET-001" not in prompts[0]
+    assert len(prompts) == 3
+    assert any("You are DataAnalystAgent" in prompt for prompt in prompts)
+    assert any("You are RiskExpertAgent" in prompt for prompt in prompts)
+    supervisor_prompt = next(
+        prompt for prompt in prompts if "Synthesize executive-ready RWA commentary" in prompt
+    )
+    assert "Do not calculate RWA formulas" in supervisor_prompt
+    assert "Do not copy deterministic baseline sentences verbatim" in supervisor_prompt
+    assert "Use PLN as the monetary unit" in supervisor_prompt
+    assert "Raw portfolio rows and direct identifiers are intentionally not provided" in (
+        supervisor_prompt
+    )
+    assert all("ASSET-001" not in prompt for prompt in prompts)
+    assert "DataAnalystAgent Watsonx synthesis completed." in response.messages
+    assert "RiskExpertAgent Watsonx synthesis completed." in response.messages
 
 
 def test_watsonx_malformed_output_falls_back_to_deterministic_commentary(monkeypatch) -> None:
@@ -129,8 +138,8 @@ def test_watsonx_malformed_output_falls_back_to_deterministic_commentary(monkeyp
     assert response.status == "COMPLETED"
     assert "Submitted portfolio RWA" in response.final_commentary.executive_summary
     assert "not-json commentary" not in response.final_commentary.executive_summary
-    assert response.observability.llm_call_count == 1
-    assert response.observability.total_token_count == 8
+    assert response.observability.llm_call_count == 3
+    assert response.observability.total_token_count == 24
 
 
 def test_watsonx_provider_failure_falls_back_without_llm_metrics(monkeypatch) -> None:
@@ -197,5 +206,5 @@ def test_unsafe_watsonx_output_is_blocked_before_state_update(monkeypatch) -> No
 
     assert response.status == "BLOCKED"
     assert "jane.client@example.com" not in response.final_commentary.executive_summary
-    assert response.observability.llm_call_count == 1
+    assert response.observability.llm_call_count == 2
     assert response.observability.guardrail_block_count >= 1

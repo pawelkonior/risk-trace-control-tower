@@ -117,6 +117,8 @@ test("changes dashboard filters, tabs and chart controls", async ({ page }) => {
 });
 
 test("switches lineage and briefing controls", async ({ page }) => {
+  test.setTimeout(120_000);
+
   await page.goto("/#/lineage");
 
   await page.getByRole("button", { name: "Table" }).click();

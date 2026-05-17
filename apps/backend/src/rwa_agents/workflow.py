@@ -123,12 +123,26 @@ def _build_graph(
         observability.node("DataAnalystAgent")
         observability.tool("DataTools")
         result = analyze_data_quality(request)
+        result = _maybe_enrich_worker_with_watsonx(
+            request=request,
+            result=result,
+            config=config,
+            guardrails=guardrails,
+            observability=observability,
+        )
         return {"data_agent_result": result}
 
     def risk_expert_agent(_state: AgentState) -> dict:
         observability.node("RiskExpertAgent")
         observability.tool("RiskTools")
         result = analyze_risk(request)
+        result = _maybe_enrich_worker_with_watsonx(
+            request=request,
+            result=result,
+            config=config,
+            guardrails=guardrails,
+            observability=observability,
+        )
         return {"risk_agent_result": result}
 
     def analysis_fan_in(state: AgentState) -> dict:
@@ -141,13 +155,38 @@ def _build_graph(
         }
         worker_guardrail = guardrails.scan("worker_outputs", worker_payload)
         observability.guardrail(worker_guardrail)
-        if worker_guardrail.blocked:
+        worker_guardrail_results = [
+            *data_result.guardrail_results,
+            *risk_result.guardrail_results,
+            worker_guardrail,
+        ]
+        worker_messages = [
+            *state["messages"],
+            *data_result.messages,
+            *risk_result.messages,
+        ]
+        worker_llm_call_count = (
+            state["llm_call_count"] + data_result.llm_call_count + risk_result.llm_call_count
+        )
+        worker_token_count = (
+            state["total_token_count"]
+            + data_result.total_token_count
+            + risk_result.total_token_count
+        )
+        if (
+            worker_guardrail.blocked
+            or data_result.guardrail_blocked
+            or risk_result.guardrail_blocked
+        ):
             return {
-                "guardrail_results": [*state["guardrail_results"], worker_guardrail],
+                "messages": worker_messages,
+                "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
                 "guardrail_blocked": True,
+                "llm_call_count": worker_llm_call_count,
+                "total_token_count": worker_token_count,
             }
         return {
-            "messages": [*state["messages"], "Parallel LangGraph worker analysis completed."],
+            "messages": [*worker_messages, "Parallel LangGraph worker analysis completed."],
             "agent_findings": [*data_result.findings, *risk_result.findings],
             "validation_flags": [
                 *data_result.validation_flags,
@@ -158,7 +197,9 @@ def _build_graph(
                 *risk_result.recommended_actions,
             ],
             "quantitative_validation": risk_result.quantitative_validation,
-            "guardrail_results": [*state["guardrail_results"], worker_guardrail],
+            "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
+            "llm_call_count": worker_llm_call_count,
+            "total_token_count": worker_token_count,
         }
 
     def supervisor_agent(state: AgentState) -> dict:
@@ -273,6 +314,8 @@ def _build_graph(
 
     def guardrail_blocked(_state: AgentState) -> dict:
         observability.node("GuardrailBlocked")
+        observability.metadata.llm_call_count = _state["llm_call_count"]
+        observability.metadata.total_token_count = _state["total_token_count"]
         final = _blocked_commentary(
             request,
             observability,
@@ -339,6 +382,132 @@ class LlmSynthesisResult(NamedTuple):
     messages: list[str]
 
 
+def _maybe_enrich_worker_with_watsonx(
+    *,
+    request: RwaAnalysisRequest,
+    result: WorkerAnalysisResult,
+    config: RwaAgentsConfig,
+    guardrails: GuardrailService,
+    observability: LocalObservability,
+) -> WorkerAnalysisResult:
+    if not config.uses_watsonx:
+        return result
+
+    if not config.watsonx_configured:
+        return result.model_copy(
+            update={
+                "messages": [
+                    *result.messages,
+                    f"{result.agent} Watsonx synthesis skipped because watsonx is not configured.",
+                ]
+            }
+        )
+
+    stage_prefix = "data_analyst" if result.agent == "DataAnalystAgent" else "risk_expert"
+    prompt = _build_worker_watsonx_prompt(request=request, result=result)
+    input_guardrail = guardrails.scan(f"{stage_prefix}_llm_input", prompt)
+    observability.guardrail(input_guardrail)
+    if input_guardrail.blocked:
+        return result.model_copy(
+            update={
+                "guardrail_results": [*result.guardrail_results, input_guardrail],
+                "guardrail_blocked": True,
+            }
+        )
+
+    try:
+        watsonx_response = _new_watsonx_client(config).chat(prompt)
+    except WatsonxResponseError as exc:
+        token_count = _record_worker_failed_watsonx_response(
+            config=config,
+            observability=observability,
+            error=exc,
+        )
+        output_guardrail = guardrails.scan(
+            f"{stage_prefix}_llm_output",
+            exc.raw_text or f"Malformed watsonx response for {result.agent}.",
+        )
+        observability.guardrail(output_guardrail)
+        return result.model_copy(
+            update={
+                "guardrail_results": [
+                    *result.guardrail_results,
+                    input_guardrail,
+                    output_guardrail,
+                ],
+                "guardrail_blocked": output_guardrail.blocked,
+                "messages": [
+                    *result.messages,
+                    f"{result.agent} Watsonx response was not structured; tool result kept.",
+                ],
+                "llm_call_count": 1,
+                "total_token_count": token_count,
+            }
+        )
+    except WatsonxError as exc:
+        logger.warning("%s Watsonx synthesis unavailable: %s", result.agent, type(exc).__name__)
+        return result.model_copy(
+            update={
+                "guardrail_results": [*result.guardrail_results, input_guardrail],
+                "messages": [
+                    *result.messages,
+                    f"{result.agent} Watsonx synthesis unavailable; tool result kept.",
+                ],
+            }
+        )
+
+    token_count = _record_successful_worker_watsonx_response(
+        config=config,
+        observability=observability,
+        response=watsonx_response,
+    )
+    output_payload = {
+        "executive_summary": watsonx_response.executive_summary,
+        "cro_view": watsonx_response.cro_view,
+        "cfo_view": watsonx_response.cfo_view,
+    }
+    output_guardrail = guardrails.scan(f"{stage_prefix}_llm_output", output_payload)
+    observability.guardrail(output_guardrail)
+    guardrail_results = [*result.guardrail_results, input_guardrail, output_guardrail]
+    if output_guardrail.blocked:
+        return result.model_copy(
+            update={
+                "guardrail_results": guardrail_results,
+                "guardrail_blocked": True,
+                "llm_call_count": 1,
+                "total_token_count": token_count,
+            }
+        )
+
+    finding_kind = "data_quality" if result.agent == "DataAnalystAgent" else "risk"
+    finding_title = (
+        "Watsonx data-quality interpretation"
+        if result.agent == "DataAnalystAgent"
+        else "Watsonx risk interpretation"
+    )
+    watsonx_finding = AgentFinding(
+        agent=result.agent,
+        kind=finding_kind,
+        severity="info",
+        title=finding_title,
+        detail=watsonx_response.executive_summary,
+        evidence=[
+            f"model={config.watsonx.watsonx_model_id}",
+            "summarized deterministic tool observations only",
+        ],
+        react_steps=result.react_steps,
+    )
+    return result.model_copy(
+        update={
+            "findings": [*result.findings, watsonx_finding],
+            "guardrail_results": guardrail_results,
+            "messages": [*result.messages, f"{result.agent} Watsonx synthesis completed."],
+            "llm_call_count": 1,
+            "total_token_count": token_count,
+        }
+    )
+
+
 def _maybe_synthesize_with_watsonx(
     *,
     request: RwaAnalysisRequest,
@@ -391,17 +560,7 @@ def _maybe_synthesize_with_watsonx(
         )
 
     try:
-        client = WatsonxClient(
-            project_id=config.watsonx.watsonx_project_id or "",
-            api_key=config.watsonx.watsonx_apikey or "",
-            url=config.watsonx.watsonx_url,
-            model_id=config.watsonx.watsonx_model_id,
-            api_version=config.watsonx.watsonx_api_version,
-            max_new_tokens=config.watsonx.watsonx_max_new_tokens,
-            time_limit=config.watsonx.watsonx_time_limit,
-            http_timeout=config.watsonx.watsonx_http_timeout,
-        )
-        watsonx_response = client.chat(prompt)
+        watsonx_response = _new_watsonx_client(config).chat(prompt)
     except WatsonxResponseError as exc:
         llm_call_count, total_token_count = _record_failed_watsonx_response(
             state=state,
@@ -498,6 +657,49 @@ def _maybe_synthesize_with_watsonx(
     )
 
 
+def _new_watsonx_client(config: RwaAgentsConfig) -> WatsonxClient:
+    return WatsonxClient(
+        project_id=config.watsonx.watsonx_project_id or "",
+        api_key=config.watsonx.watsonx_apikey or "",
+        url=config.watsonx.watsonx_url,
+        model_id=config.watsonx.watsonx_model_id,
+        api_version=config.watsonx.watsonx_api_version,
+        max_new_tokens=config.watsonx.watsonx_max_new_tokens,
+        time_limit=config.watsonx.watsonx_time_limit,
+        http_timeout=config.watsonx.watsonx_http_timeout,
+    )
+
+
+def _record_successful_worker_watsonx_response(
+    *,
+    config: RwaAgentsConfig,
+    observability: LocalObservability,
+    response: WatsonxResponse,
+) -> int:
+    token_count = response.token_usage.total_tokens
+    observability.llm(
+        provider="watsonx",
+        model_id=config.watsonx.watsonx_model_id,
+        token_count=token_count,
+    )
+    return token_count
+
+
+def _record_worker_failed_watsonx_response(
+    *,
+    config: RwaAgentsConfig,
+    observability: LocalObservability,
+    error: WatsonxResponseError,
+) -> int:
+    token_count = error.token_usage.total_tokens if error.token_usage is not None else 0
+    observability.llm(
+        provider="watsonx",
+        model_id=config.watsonx.watsonx_model_id,
+        token_count=token_count,
+    )
+    return token_count
+
+
 def _record_successful_watsonx_response(
     *,
     state: AgentState,
@@ -528,6 +730,44 @@ def _record_failed_watsonx_response(
         token_count=token_count,
     )
     return state["llm_call_count"] + 1, state["total_token_count"] + token_count
+
+
+def _build_worker_watsonx_prompt(
+    *,
+    request: RwaAnalysisRequest,
+    result: WorkerAnalysisResult,
+) -> str:
+    severity_counts = Counter(flag.severity for flag in result.validation_flags)
+    flag_code_counts = Counter(flag.code for flag in result.validation_flags)
+    finding_titles = [finding.title for finding in result.findings[:8]]
+    action_priorities = Counter(action.priority for action in result.recommended_actions)
+    failed_validations = sum(1 for item in result.quantitative_validation if not item.passed)
+    return "\n".join(
+        [
+            f"You are {result.agent} in a guarded RWA multi-agent workflow.",
+            "Use only summarized deterministic tool observations below.",
+            "Do not calculate RWA formulas; Python tools already performed quantitative checks.",
+            "Do not request or infer direct customer, counterparty, account, or personal data.",
+            "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
+            "",
+            "Summarized worker facts:",
+            f"- generation_request_id: {request.request_id}",
+            f"- input_record_count: {len(request.rwa_input_data)}",
+            f"- output_record_count: {len(request.rwa_output_results)}",
+            f"- agent: {result.agent}",
+            f"- finding_count: {len(result.findings)}",
+            f"- finding_titles: {finding_titles}",
+            f"- validation_severity_counts: {dict(severity_counts)}",
+            f"- validation_code_counts: {dict(flag_code_counts)}",
+            f"- recommended_action_count: {len(result.recommended_actions)}",
+            f"- recommended_action_priorities: {dict(action_priorities)}",
+            f"- quantitative_validation_count: {len(result.quantitative_validation)}",
+            f"- failed_quantitative_validation_count: {failed_validations}",
+            "",
+            "Write a concise agent interpretation for the supervisor.",
+            "Raw portfolio rows and direct identifiers are intentionally not provided.",
+        ]
+    )
 
 
 def _build_watsonx_prompt(
