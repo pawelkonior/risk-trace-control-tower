@@ -70,10 +70,10 @@ resource "aws_ecr_lifecycle_policy" "main" {
         rulePriority = 2
         description  = "Keep 10 most recent sha- tagged images"
         selection = {
-          tagStatus      = "tagged"
-          tagPrefixList  = ["sha-"]
-          countType      = "imageCountMoreThan"
-          countNumber    = 10
+          tagStatus     = "tagged"
+          tagPrefixList = ["sha-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
         }
         action = { type = "expire" }
       }
@@ -109,8 +109,8 @@ resource "aws_ecr_repository_policy" "main" {
         ]
       },
       {
-        Sid    = "DenyLatestTag"
-        Effect = "Deny"
+        Sid       = "DenyLatestTag"
+        Effect    = "Deny"
         Principal = "*"
         Action = [
           "ecr:PutImage",

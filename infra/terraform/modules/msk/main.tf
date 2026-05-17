@@ -71,9 +71,9 @@ resource "aws_secretsmanager_secret_version" "scram" {
 # ============================================================================
 
 resource "aws_msk_configuration" "main" {
-  name              = "${var.project_name}-${var.environment}-kafka-config"
-  description       = "Kafka 3.7 KRaft configuration for ${var.project_name} ${var.environment}"
-  kafka_versions    = ["3.7.x"]
+  name           = "${var.project_name}-${var.environment}-kafka-config"
+  description    = "Kafka 3.7 KRaft configuration for ${var.project_name} ${var.environment}"
+  kafka_versions = ["3.7.x"]
 
   server_properties = <<-EOF
     auto.create.topics.enable=false

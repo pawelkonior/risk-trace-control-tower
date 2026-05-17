@@ -96,8 +96,8 @@ resource "aws_s3_bucket_policy" "compliance" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "DenyNonTLSRequests"
-        Effect = "Deny"
+        Sid       = "DenyNonTLSRequests"
+        Effect    = "Deny"
         Principal = "*"
         Action    = "s3:*"
         Resource = [
@@ -109,8 +109,8 @@ resource "aws_s3_bucket_policy" "compliance" {
         }
       },
       {
-        Sid    = "DenyUnencryptedObjectUploads"
-        Effect = "Deny"
+        Sid       = "DenyUnencryptedObjectUploads"
+        Effect    = "Deny"
         Principal = "*"
         Action    = "s3:PutObject"
         Resource  = "${aws_s3_bucket.compliance.arn}/*"
