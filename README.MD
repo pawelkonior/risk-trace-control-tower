@@ -5,8 +5,8 @@
 <h1 align="center">RiskTrace Control Tower</h1>
 
 <p align="center">
-  Enterprise-grade Basel III RWA analytics, steering, lineage and AI-assisted executive
-  commentary in one full-stack control tower.
+  Enterprise-grade Basel III RWA analytics, steering, lineage and agentic AI architecture
+  for executive commentary in one full-stack control tower.
 </p>
 
 <p align="center">
@@ -24,8 +24,8 @@
 
 RiskTrace Control Tower is a monorepo for capital, credit-risk and RWA decision support. It
 combines a Python/FastAPI backend, a React/Vite frontend, deterministic generated inputs,
-AI-assisted RWA commentary, and production-oriented platform assets for observability,
-deployment and security analysis.
+agentic AI architecture for RWA commentary, and production-oriented platform assets for
+observability, deployment and security analysis.
 
 The platform is built for teams that need to inspect Basel III capital metrics, understand
 movement drivers, trace data lineage, run scenario projections, and turn portfolio signals into
@@ -40,7 +40,7 @@ clear management-ready briefings.
 | Projection and forecast services | Monthly run-off projections, VAR-style and recurrent factor forecast paths, Monte Carlo trajectories and capital-ratio breach analysis. |
 | Steering and optimization | Scenario-aware steering recommendations plus deterministic Risk-Aware Trading Swarm optimization. |
 | Data lineage | Traceable calculation flow and transformation steps for audit-style review. |
-| AI executive commentary | Parallel RWA analysis agents with guardrails, retries, cache, cost tracking and optional LangFuse tracing. |
+| Agentic AI executive commentary | Parallel RWA analysis agents with guardrails, retries, cache, cost tracking and optional LangFuse tracing. |
 | Enterprise runtime assets | Docker Compose, Helm charts, Terraform modules, Kubernetes policy, Prometheus/Grafana/Loki/Tempo/Alertmanager configuration and local MCP security tooling. |
 
 ## Product Screens
@@ -113,6 +113,10 @@ clear management-ready briefings.
 </table>
 
 ## Architecture
+
+RiskTrace uses an agentic AI architecture for executive RWA commentary: specialized analysis
+agents work in parallel, a supervisor coordinates consensus, and guardrails, tracing, retries
+and deterministic fallback keep the workflow auditable and resilient.
 
 ```mermaid
 flowchart LR
