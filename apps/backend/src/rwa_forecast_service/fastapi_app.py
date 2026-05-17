@@ -51,8 +51,8 @@ def create_app() -> FastAPI:
             ),
         }
 
-    @app.post("/v1/forecasts/run", response_model=ForecastResponse, tags=["forecast"])
-    @app.post("/forecasts/run", response_model=ForecastResponse, tags=["forecast"])
+    @app.post("/v1/forecasts/run", tags=["forecast"])
+    @app.post("/forecasts/run", tags=["forecast"])
     def run(request: ForecastRequest) -> ForecastResponse:
         """Run autoregressive forecast and Monte Carlo trajectory scoring."""
         return app.state.service.run(request)

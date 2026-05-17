@@ -57,8 +57,8 @@ def create_app() -> FastAPI:
             ),
         }
 
-    @app.post("/v1/steering/run", response_model=SteeringResponse, tags=["steering"])
-    @app.post("/steering/run", response_model=SteeringResponse, tags=["steering"])
+    @app.post("/v1/steering/run", tags=["steering"])
+    @app.post("/steering/run", tags=["steering"])
     def run(request: SteeringRequest) -> SteeringResponse:
         """Run the deterministic steering workflow for the requested scenarios."""
         return app.state.service.run(request)

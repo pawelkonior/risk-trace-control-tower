@@ -46,8 +46,8 @@ def create_app(settings: ProjectionServiceSettings | None = None) -> FastAPI:
             "projection_engine_version": PROJECTION_ENGINE_VERSION,
         }
 
-    @app.post("/v1/projections/calculate", response_model=ProjectionResponse, tags=["projection"])
-    @app.post("/projections/calculate", response_model=ProjectionResponse, tags=["projection"])
+    @app.post("/v1/projections/calculate", tags=["projection"])
+    @app.post("/projections/calculate", tags=["projection"])
     def calculate(request: ProjectionRequest) -> ProjectionResponse:
         """Run monthly RWA projection for the supplied portfolio slice."""
         return app.state.service.calculate(request)

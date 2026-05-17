@@ -4,6 +4,7 @@ import os
 from collections.abc import Generator
 from pathlib import Path
 from tempfile import gettempdir
+from typing import TypeAlias
 from uuid import uuid4
 
 from sqlalchemy import create_engine
@@ -18,7 +19,7 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy ORM models used by RiskTrace APIs."""
 
 
-SessionFactory = sessionmaker[Session]
+SessionFactory: TypeAlias = sessionmaker
 
 
 def database_url_from_env() -> str:

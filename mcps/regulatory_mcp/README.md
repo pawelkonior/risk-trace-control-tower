@@ -313,6 +313,36 @@ Test coverage includes:
 - Regulation search, control matching, review, generation, release readiness, report, resource, prompt, and in-memory MCP tool coverage
 - Configuration (2 tests)
 
+### Docker Smoke Test
+
+A comprehensive Docker smoke test script is provided to verify the containerized MCP server:
+
+```bash
+# Run Docker smoke test
+./test-docker-smoke.sh
+```
+
+The smoke test validates:
+- ✓ Docker image builds successfully
+- ✓ Container starts and runs
+- ✓ Corpus loads (≥9 regulations, ≥15 controls)
+- ✓ MCP server starts without errors
+- ✓ Container stops cleanly
+
+The script uses `docker compose` and checks container logs for:
+- Successful corpus loading with expected counts
+- MCP server startup confirmation
+- Absence of critical errors
+
+**Requirements:**
+- Docker and Docker Compose installed
+- Run from `mcps/regulatory_mcp/` directory
+- Uses `../docker-compose.yml` configuration
+
+**Exit codes:**
+- `0`: All checks passed
+- `1`: One or more checks failed (see output for details)
+
 ## License
 
 UNLICENSED - Internal use only

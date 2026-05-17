@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,13 +136,13 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         yield from session_scope(app.state.session_factory)
 
     def get_risktrace_service(
-        session: Session = Depends(get_db_session),
+        session: Annotated[Session, Depends(get_db_session)],
     ) -> RisktraceUiService:
         """Provide the React-facing RiskTrace service."""
         return RisktraceUiService(RisktraceUiRepository(session))
 
-    @app.get("/v1/health", response_model=HealthResponse, tags=["service"])
-    @app.get("/health", response_model=HealthResponse, tags=["service"])
+    @app.get("/v1/health", tags=["service"])
+    @app.get("/health", tags=["service"])
     def health() -> HealthResponse:
         """Return liveness and dependency metadata for monitoring."""
         return HealthResponse(
@@ -169,7 +170,7 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         return {"status": "ready"}
 
     @app.get("/reference/nccr", tags=["reference"])
-    def nccr_reference(calc: RwaCalculator = Depends(get_calculator)) -> dict:
+    def nccr_reference(calc: Annotated[RwaCalculator, Depends(get_calculator)]) -> dict:
         """Expose the loaded NCCR mapping for debugging and audit inspection."""
         return calc.nccr_mapping
 
@@ -192,13 +193,13 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/countries", tags=["reference"])
-    def countries(calc: RwaCalculator = Depends(get_calculator)) -> dict:
+    def countries(calc: Annotated[RwaCalculator, Depends(get_calculator)]) -> dict:
         """Expose country reference records loaded into the calculator."""
         return {code: asdict(country) for code, country in calc.countries.items()}
 
-    @app.get("/v1/app/context", response_model=AppContext, tags=["risktrace-ui"])
+    @app.get("/v1/app/context", tags=["risktrace-ui"])
     def frontend_app_context(
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> AppContext:
         """Expose global React shell context from the database."""
         try:
@@ -208,15 +209,14 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.get(
         "/v1/dashboard/snapshot",
-        response_model=DashboardSnapshot,
         tags=["risktrace-ui"],
     )
     def frontend_dashboard_snapshot(
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
         period: str = "Current",
         scenario: str = "Base Case",
-        business_unit: str = Query("All", alias="businessUnit"),
+        business_unit: Annotated[str, Query(alias="businessUnit")] = "All",
         currency: str = "PLN",
-        service: RisktraceUiService = Depends(get_risktrace_service),
     ) -> DashboardSnapshot:
         """Expose a frontend-ready portfolio dashboard snapshot over REST."""
         try:
@@ -233,12 +233,11 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.get(
         "/v1/lineage/traces/{trace_id}",
-        response_model=LineageSnapshot,
         tags=["risktrace-ui"],
     )
     def frontend_lineage_trace(
         trace_id: str,
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> LineageSnapshot:
         """Expose one calculation lineage trace for the React lineage view."""
         try:
@@ -248,11 +247,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.get(
         "/v1/briefing/snapshot",
-        response_model=BriefingSnapshot,
         tags=["risktrace-ui"],
     )
     def frontend_briefing_snapshot(
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> BriefingSnapshot:
         """Expose the management briefing dataset for React."""
         try:
@@ -262,13 +260,12 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/ui/actions/{action_id}",
-        response_model=UiActionResponse,
         tags=["risktrace-ui"],
     )
     def frontend_ui_action(
         action_id: str,
         request: UiActionRequest,
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> UiActionResponse:
         """Execute and audit one UI action through the backend."""
         try:
@@ -278,13 +275,12 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/exports/{export_type}",
-        response_model=ExportResponse,
         tags=["risktrace-ui"],
     )
     def frontend_export(
         export_type: str,
         request: ExportRequest,
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> ExportResponse:
         """Queue a backend-backed UI export."""
         try:
@@ -294,12 +290,11 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.get(
         "/v1/exports/{export_type}",
-        response_model=ExportResponse,
         tags=["risktrace-ui"],
     )
     def frontend_export_get(
         export_type: str,
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> ExportResponse:
         """Queue a backend-backed UI export for clients that cannot send a body."""
         try:
@@ -309,11 +304,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.get(
         "/v1/notifications",
-        response_model=list[NotificationItem],
         tags=["risktrace-ui"],
     )
     def frontend_notifications(
-        service: RisktraceUiService = Depends(get_risktrace_service),
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
     ) -> list[NotificationItem]:
         """Expose notification records shown in the React shell."""
         try:
@@ -321,10 +315,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         except RisktraceDatasetNotFoundError as exc:
             raise HTTPException(status_code=404, detail=not_found_message(exc)) from exc
 
-    @app.get("/v1/search", response_model=SearchResponse, tags=["risktrace-ui"])
+    @app.get("/v1/search", tags=["risktrace-ui"])
     def frontend_search(
+        service: Annotated[RisktraceUiService, Depends(get_risktrace_service)],
         q: str = "",
-        service: RisktraceUiService = Depends(get_risktrace_service),
     ) -> SearchResponse:
         """Search the database-backed UI datasets."""
         try:
@@ -332,11 +326,11 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         except RisktraceDatasetNotFoundError as exc:
             raise HTTPException(status_code=404, detail=not_found_message(exc)) from exc
 
-    @app.post("/v1/rwa/calculate", response_model=CalculateResponse, tags=["calculation"])
-    @app.post("/rwa/calculate", response_model=CalculateResponse, tags=["calculation"])
+    @app.post("/v1/rwa/calculate", tags=["calculation"])
+    @app.post("/rwa/calculate", tags=["calculation"])
     def calculate(
         request: CalculateRequest,
-        calc: RwaCalculator = Depends(get_calculator),
+        calc: Annotated[RwaCalculator, Depends(get_calculator)],
     ) -> CalculateResponse:
         """Calculate RWA for a JSON portfolio slice."""
         rows = [pydantic_row_to_engine_row(row) for row in request.core_info]
@@ -366,17 +360,15 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
             **payload,
         )
 
-    @app.post("/v1/rwa/calculate/csv", response_model=CalculateResponse, tags=["calculation"])
-    @app.post("/rwa/calculate/csv", response_model=CalculateResponse, tags=["calculation"])
+    @app.post("/v1/rwa/calculate/csv", tags=["calculation"])
+    @app.post("/rwa/calculate/csv", tags=["calculation"])
     async def calculate_csv(
-        core_file: UploadFile = File(description="CoreInfo CSV"),
-        country_file: UploadFile | None = File(
-            default=None, description="Optional CountryInfo CSV"
-        ),
+        calc: Annotated[RwaCalculator, Depends(get_calculator)],
+        core_file: Annotated[UploadFile, File(description="CoreInfo CSV")],
+        country_file: Annotated[UploadFile | None, File(description="Optional CountryInfo CSV")] = None,
         include_trace: bool = False,
         projection_date: str | None = None,
         regulatory_reference_version: str = "basel_iii_final_reforms_2017",
-        calc: RwaCalculator = Depends(get_calculator),
     ) -> CalculateResponse:
         """Calculate RWA for uploaded CoreInfo and optional CountryInfo CSV files."""
         try:
@@ -406,7 +398,6 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/output-floor/calculate",
-        response_model=OutputFloorResponse,
         tags=["capital"],
     )
     def output_floor(request: OutputFloorRequest) -> OutputFloorResponse:
@@ -415,14 +406,13 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/operational-risk/calculate",
-        response_model=OperationalRiskResponse,
         tags=["capital"],
     )
     def operational_risk(request: OperationalRiskRequest) -> OperationalRiskResponse:
         """Calculate operational risk BI, BIC, ILM, ORC and RWA."""
         return calculate_operational_risk(request)
 
-    @app.post("/v1/cva/calculate", response_model=CvaRiskResponse, tags=["capital"])
+    @app.post("/v1/cva/calculate", tags=["capital"])
     def cva_risk(request: CvaRiskRequest) -> CvaRiskResponse:
         """Calculate CVA capital under materiality, BA-CVA or SA-CVA paths."""
         try:
@@ -432,7 +422,6 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/leverage-ratio/calculate",
-        response_model=LeverageRatioResponse,
         tags=["capital"],
     )
     def leverage_ratio(request: LeverageRatioRequest) -> LeverageRatioResponse:
@@ -441,7 +430,6 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/capital/portfolio",
-        response_model=PortfolioCapitalResponse,
         tags=["capital"],
     )
     def portfolio_capital(request: PortfolioCapitalRequest) -> PortfolioCapitalResponse:

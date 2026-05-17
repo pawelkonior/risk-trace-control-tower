@@ -51,8 +51,8 @@ def create_app() -> FastAPI:
             ),
         }
 
-    @app.post("/v1/rats/optimize", response_model=RATSResponse, tags=["rats"])
-    @app.post("/rats/optimize", response_model=RATSResponse, tags=["rats"])
+    @app.post("/v1/rats/optimize", tags=["rats"])
+    @app.post("/rats/optimize", tags=["rats"])
     def optimize(request: RATSRequest) -> RATSResponse:
         """Run RATS optimization on a forecasted portfolio slice."""
         return app.state.service.optimize(request)
