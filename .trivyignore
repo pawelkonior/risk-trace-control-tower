@@ -3,3 +3,9 @@ AVD-AWS-0104
 
 # Public subnets intentionally assign public IPs — required for NLB and NAT Gateways
 AVD-AWS-0164
+
+# debian base image — no fix available upstream, Debian marks will_not_fix
+CVE-2026-33845
+CVE-2026-42010
+CVE-2025-7458
+CVE-2023-45853
