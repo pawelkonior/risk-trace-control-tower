@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-level allowlist"
+paths = [
+    # Bob AI session logs contain Atlassian atl_token CSRF values in URLs — not secrets
+    "bob_sessions/.*\\.md",
+]

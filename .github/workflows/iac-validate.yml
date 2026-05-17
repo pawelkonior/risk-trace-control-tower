@@ -63,10 +63,13 @@ jobs:
           soft_fail: false
           skip_check: CKV_AWS_7,CKV_AWS_144
 
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1
+      - name: tfsec (trivy config)
+        uses: aquasecurity/trivy-action@master
         with:
-          working_directory: infra/terraform/environments/prod
+          scan-type: config
+          scan-ref: infra/terraform/environments/prod
+          exit-code: "1"
+          severity: HIGH,CRITICAL
 
   dockerfile-lint:
     name: "Docker: Hadolint"
