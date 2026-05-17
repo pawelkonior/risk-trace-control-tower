@@ -54,6 +54,7 @@ jobs:
           scan-ref: infra/terraform/environments/prod
           exit-code: "1"
           severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
 
   dockerfile-lint:
     name: "Docker: Hadolint"
