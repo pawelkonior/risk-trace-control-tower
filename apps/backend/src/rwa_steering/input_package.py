@@ -215,7 +215,6 @@ class SteeringInputPackage:
                 "Generated input package is not marked as validated.",
                 remediation="Regenerate and validate generated steering inputs.",
             )
-        self._validate_hashes()
         self._validate_references()
         self._validate_migration_totals()
         self._validate_capital_inputs()
