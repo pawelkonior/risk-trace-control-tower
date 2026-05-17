@@ -26,11 +26,11 @@ class RwaInputRecord(AgentSchema):
     asset_id: str = Field(min_length=3, max_length=80)
     asset_class: str = Field(min_length=1, max_length=80)
     sector: str = Field(min_length=1, max_length=80)
-    exposure_amount: Decimal = Field(gt=Decimal("0"))
+    exposure_amount: Decimal
     risk_weight: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("12"))
     rating: str | None = Field(default=None, max_length=40)
-    pd: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("1"))
-    lgd: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("1"))
+    pd: Decimal | None = None
+    lgd: Decimal | None = None
     maturity_years: Decimal | None = Field(default=None, gt=Decimal("0"), le=Decimal("100"))
     approach: str | None = Field(default=None, max_length=80)
 
@@ -64,7 +64,15 @@ class ValidationFlag(AgentSchema):
     severity: FindingSeverity
     message: str
     asset_id: str | None = None
-    source: str
+    source_agent: str
+    requires_human_intervention: bool = False
+
+
+class ReactStep(AgentSchema):
+    phase: Literal["inspect_state", "select_tool", "execute_tool", "observe_result", "emit_finding"]
+    tool_name: str | None = None
+    action: str
+    observation: str
 
 
 class AgentFinding(AgentSchema):
@@ -74,6 +82,7 @@ class AgentFinding(AgentSchema):
     title: str
     detail: str
     evidence: list[str] = Field(default_factory=list)
+    react_steps: list[ReactStep] = Field(default_factory=list)
 
 
 class RecommendedAction(AgentSchema):
@@ -138,6 +147,15 @@ class QuantitativeValidationItem(AgentSchema):
     variance_amount: Decimal
     variance_pct: Decimal
     passed: bool
+
+
+class WorkerAnalysisResult(AgentSchema):
+    agent: str
+    findings: list[AgentFinding] = Field(default_factory=list)
+    validation_flags: list[ValidationFlag] = Field(default_factory=list)
+    recommended_actions: list[RecommendedAction] = Field(default_factory=list)
+    quantitative_validation: list[QuantitativeValidationItem] = Field(default_factory=list)
+    react_steps: list[ReactStep] = Field(default_factory=list)
 
 
 class FinalCommentary(AgentSchema):

@@ -7,10 +7,12 @@ from .schemas import (
     CommentaryViews,
     FinalCommentary,
     GuardrailResult,
+    QuantitativeValidationItem,
     RecommendedAction,
     RwaInputRecord,
     RwaOutputRecord,
     ValidationFlag,
+    WorkerAnalysisResult,
 )
 
 
@@ -24,6 +26,9 @@ class AgentState(TypedDict):
     recommended_actions: list[RecommendedAction]
     commentary_views: CommentaryViews
     guardrail_results: list[GuardrailResult]
+    quantitative_validation: list[QuantitativeValidationItem]
+    data_agent_result: WorkerAnalysisResult | None
+    risk_agent_result: WorkerAnalysisResult | None
     loop_count: int
     loop_limit: int
     consensus_reached: bool

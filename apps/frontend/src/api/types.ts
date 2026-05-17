@@ -404,6 +404,13 @@ export type RwaAnalysisRequest = {
   rwa_output_results: RwaAnalysisOutputRecord[];
 };
 
+export type RwaReactStep = {
+  phase: "inspect_state" | "select_tool" | "execute_tool" | "observe_result" | "emit_finding";
+  tool_name?: string | null;
+  action: string;
+  observation: string;
+};
+
 export type RwaAgentFinding = {
   agent: string;
   kind: "data_quality" | "risk" | "validation" | "guardrail" | "observability";
@@ -411,6 +418,7 @@ export type RwaAgentFinding = {
   title: string;
   detail: string;
   evidence: string[];
+  react_steps: RwaReactStep[];
 };
 
 export type RwaValidationFlag = {
@@ -418,7 +426,8 @@ export type RwaValidationFlag = {
   severity: "info" | "warning" | "critical";
   message: string;
   asset_id?: string | null;
-  source: string;
+  source_agent: string;
+  requires_human_intervention: boolean;
 };
 
 export type RwaRecommendedAction = {
