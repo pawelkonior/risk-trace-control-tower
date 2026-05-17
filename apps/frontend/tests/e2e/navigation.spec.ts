@@ -22,17 +22,17 @@ test("navigates between working views and breadcrumbs", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "RWA Dashboard" })).toBeVisible();
   await expect(page.getByText("TOTAL RWA", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Export Report" }).click();
-  await expect(page.getByRole("status")).toContainText("RWA Dashboard PDF and CSV pack queued.");
+  await expect(page.getByRole("status")).toContainText("Data is being processed.");
 
   await primaryNav.getByRole("link", { name: "Data Lineage" }).click();
   await expect(page).toHaveURL(/#\/lineage$/);
   await expect(page.getByRole("heading", { level: 1, name: "Data Lineage" })).toBeVisible();
   await expect(page.getByText("calc-trace-7f3a9b21").first()).toBeVisible();
   await page.getByRole("button", { name: "Legend" }).click();
-  await expect(page.getByRole("status")).toContainText("Lineage legend opened.");
+  await expect(page.getByLabel("Lineage flow legend")).toBeVisible();
   await page.getByRole("button", { name: "Export Lineage Report" }).click();
   await expect(page.getByRole("status")).toContainText(
-    "Data is being processed. We will email a...k...@risktrace.example when the task is complete.",
+    "Data is being processed. We will email a...k...@risktrace.com when the task is complete.",
   );
 
   await primaryNav.getByRole("link", { name: "RWA Intelligence Briefing" }).click();
@@ -40,7 +40,7 @@ test("navigates between working views and breadcrumbs", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "RWA Intelligence Briefing" })).toBeVisible();
   await expect(page.getByText("Total RWA (Current)")).toBeVisible();
   await page.getByRole("button", { name: "Export Board Pack" }).first().click();
-  await expect(page.getByRole("status")).toContainText("Board pack export queued.");
+  await expect(page.getByRole("status")).toContainText("Data is being processed.");
 
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "RWA Dashboard" }).click();
   await expect(page).toHaveURL(/#\/dashboard$/);
@@ -109,9 +109,6 @@ test("changes dashboard filters, tabs and chart controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Currency PLN/ })).toBeVisible();
   await expect.poll(() => totalRwaCard.textContent()).toBe(baseTotalRwa);
 
-  await page.getByRole("link", { name: "View Details" }).first().click();
-  await expect(page.getByRole("status")).toContainText("Chart drill-down opened.");
-
   await page.locator(".exposure-donut-card").getByRole("button", { name: /Corporate/ }).click();
   await expect(page.locator(".exposure-donut-card .donut-center")).toContainText("Corporate");
 
@@ -129,13 +126,19 @@ test("switches lineage and briefing controls", async ({ page }) => {
   await page.getByRole("button", { name: "Copy Calculation Trace ID" }).click();
   await expect(page.getByRole("status")).toContainText("Lineage value copied.");
   await page.getByRole("button", { name: "Download All Artifacts" }).click();
-  await expect(page.getByRole("status")).toContainText("a...k...@risktrace.example");
+  await expect(page.getByRole("status")).toContainText("a...k...@risktrace.com");
   await page.getByRole("button", { name: "View Full Upstream Lineage" }).click();
   await expect(page.getByRole("status")).toContainText("Data is being processed.");
 
   await page.goto("/#/briefing");
   await expect(page.getByRole("heading", { level: 1, name: "RWA Intelligence Briefing" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Regenerate" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "AI Executive Commentary" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Commentary views" })).toBeVisible();
+  await page.getByRole("tab", { name: "CRO View" }).click();
+  await expect(page.getByText("Risk review should focus")).toBeVisible();
+  await page.getByRole("button", { name: "Regenerate" }).click();
+  await expect(page.getByText("RiskTrace Intelligence").first()).toBeVisible();
 
   const reviewTabs = page.getByRole("tablist", { name: "Review pack sections" });
   await reviewTabs.getByRole("tab", { name: "Controls" }).click();
@@ -143,6 +146,5 @@ test("switches lineage and briefing controls", async ({ page }) => {
   await reviewTabs.getByRole("tab", { name: "Sign-off" }).click();
   await expect(page.getByText("Sign-off inputs")).toBeVisible();
 
-  await page.getByRole("button", { name: "Simulate All" }).click();
-  await expect(page.getByRole("status")).toContainText("Management action simulation completed.");
+  await expect(page.getByRole("button", { name: "Simulate All" })).toBeDisabled();
 });

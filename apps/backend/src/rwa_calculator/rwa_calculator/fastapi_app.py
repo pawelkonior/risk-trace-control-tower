@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 import rwa_dashboard.models  # noqa: F401
+from rwa_agents.api import router as rwa_agents_router
 from rwa_calculator.paths import NCCR_MAPPING_PATH, PREPROD_COUNTRY_INFO_PATH, REFERENCE_DATA_ROOT
 from rwa_common.db import Base, create_database_engine, create_session_factory, session_scope
 from rwa_dashboard.repositories import (
@@ -123,12 +124,13 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     app.state.reference_data_package = reference_data_package
     app.state.database_engine = database_engine
     app.state.session_factory = session_factory
+    app.include_router(rwa_agents_router)
 
     def get_calculator() -> RwaCalculator:
         """Provide the app-scoped calculator to request handlers."""
         return app.state.calculator
 
-    def get_db_session() -> Generator[Session, None, None]:
+    def get_db_session() -> Iterator[Session]:
         """Provide a request-scoped database session."""
         yield from session_scope(app.state.session_factory)
 

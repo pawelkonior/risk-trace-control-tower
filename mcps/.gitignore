@@ -1,0 +1,8 @@
+generated/
+local/
+__pycache__/
+.env
+.env.*
+!.env.example
+*.token
+*.secret

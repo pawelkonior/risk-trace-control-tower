@@ -1,0 +1,67 @@
+ Image bank-regulatory-controls-mcp:local Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 673B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 487B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:20-alpine
+#3 DONE 0.3s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 136B done
+#4 DONE 0.0s
+
+#5 [build 1/8] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#5 resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 3.62kB done
+#6 DONE 0.0s
+
+#7 [build 5/8] COPY tsconfig.json vitest.config.ts ./
+#7 CACHED
+
+#8 [build 3/8] COPY package.json package-lock.json ./
+#8 CACHED
+
+#9 [build 7/8] COPY data ./data
+#9 CACHED
+
+#10 [build 6/8] COPY src ./src
+#10 CACHED
+
+#11 [build 8/8] RUN npm run build
+#11 CACHED
+
+#12 [build 4/8] RUN npm ci
+#12 CACHED
+
+#13 [runtime 4/6] RUN npm ci --omit=dev && npm cache clean --force
+#13 CACHED
+
+#14 [runtime 5/6] COPY --from=build /app/build ./build
+#14 CACHED
+
+#15 [build 2/8] WORKDIR /app
+#15 CACHED
+
+#16 [runtime 6/6] COPY --from=build /app/data ./data
+#16 CACHED
+
+#17 exporting to image
+#17 exporting layers done
+#17 exporting manifest sha256:1a1bce0e0508aa2daee44c1e6841840d1df839a22fcbdbc47151a8bd0a0071da done
+#17 exporting config sha256:d306419180a51b4a8727482a89f1ff3d51e51b5e546339a62704a8020cd939fd done
+#17 exporting attestation manifest sha256:4fc55265dae865f17aa7cb56c7b543570c78c589102c65eb8e1f30cd260ba179 done
+#17 exporting manifest list sha256:87a5eb8dc5ee87b8b9b6ebc55ecdf199a732099cc9a302a254283c844e09f371 done
+#17 naming to docker.io/library/bank-regulatory-controls-mcp:local done
+#17 unpacking to docker.io/library/bank-regulatory-controls-mcp:local done
+#17 DONE 0.0s
+
+#18 resolving provenance for metadata file
+#18 DONE 0.0s
+ Image bank-regulatory-controls-mcp:local Built 

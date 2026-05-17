@@ -1,3 +1,5 @@
+name: risktrace-mcp
+
 services:
   bank-regulatory-controls-mcp:
     build:
@@ -8,3 +10,367 @@ services:
     stdin_open: true
     tty: false
     command: ["node", "build/index.js"]
+
+  sonarqube-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${SONAR_POSTGRES_DB:-risktrace_sonarqube}
+      POSTGRES_USER: ${SONAR_POSTGRES_USER:-risktrace_sonar}
+      POSTGRES_PASSWORD: ${SONAR_POSTGRES_PASSWORD:?Set SONAR_POSTGRES_PASSWORD in mcps/.env}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - risktrace_sonarqube_db:/var/lib/postgresql/data
+
+  sonarqube:
+    image: sonarqube:community
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/${SONAR_POSTGRES_DB:-risktrace_sonarqube}
+      SONAR_JDBC_USERNAME: ${SONAR_POSTGRES_USER:-risktrace_sonar}
+      SONAR_JDBC_PASSWORD: ${SONAR_POSTGRES_PASSWORD:?Set SONAR_POSTGRES_PASSWORD in mcps/.env}
+    ports:
+      - "127.0.0.1:${SONARQUBE_PORT:-9000}:9000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:9000/api/system/status | grep -q '\"status\":\"UP\"'",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
+    volumes:
+      - risktrace_sonarqube_data:/opt/sonarqube/data
+      - risktrace_sonarqube_extensions:/opt/sonarqube/extensions
+      - risktrace_sonarqube_logs:/opt/sonarqube/logs
+
+  sonarqube-init:
+    image: python:3.12-alpine
+    profiles: ["setup"]
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    environment:
+      SONARQUBE_INTERNAL_URL: http://sonarqube:9000
+      SONARQUBE_ADMIN_USER: ${SONARQUBE_ADMIN_USER:-admin}
+      SONARQUBE_ADMIN_PASSWORD: ${SONARQUBE_ADMIN_PASSWORD:?Set SONARQUBE_ADMIN_PASSWORD in mcps/.env}
+      SONARQUBE_TOKEN_NAME: ${SONARQUBE_TOKEN_NAME:-risktrace-local-mcp}
+      SONARQUBE_TOOLSETS: ${SONARQUBE_TOOLSETS:-projects,analysis,issues,quality-gates}
+      SONARQUBE_BACKEND_PROJECT_KEY: ${SONARQUBE_BACKEND_PROJECT_KEY:-risktrace-control-tower-backend}
+      SONARQUBE_BACKEND_PROJECT_NAME: ${SONARQUBE_BACKEND_PROJECT_NAME:-RiskTrace Control Tower Backend}
+      SONARQUBE_FRONTEND_PROJECT_KEY: ${SONARQUBE_FRONTEND_PROJECT_KEY:-risktrace-control-tower-frontend}
+      SONARQUBE_FRONTEND_PROJECT_NAME: ${SONARQUBE_FRONTEND_PROJECT_NAME:-RiskTrace Control Tower Frontend}
+      SONARQUBE_SECRET_FILE: /run/risktrace-mcp/sonarqube.env
+    volumes:
+      - risktrace_mcp_secrets:/run/risktrace-mcp
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        python - <<'PY'
+        from __future__ import annotations
+
+        import base64
+        import json
+        import os
+        import stat
+        import sys
+        import time
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+        from pathlib import Path
+
+        sonar_url = os.environ["SONARQUBE_INTERNAL_URL"].rstrip("/")
+        admin_user = os.environ["SONARQUBE_ADMIN_USER"]
+        admin_password = os.environ["SONARQUBE_ADMIN_PASSWORD"]
+        token_name = os.environ["SONARQUBE_TOKEN_NAME"]
+        secret_file = Path(os.environ["SONARQUBE_SECRET_FILE"])
+
+        projects = (
+            (
+                os.environ["SONARQUBE_BACKEND_PROJECT_KEY"],
+                os.environ["SONARQUBE_BACKEND_PROJECT_NAME"],
+            ),
+            (
+                os.environ["SONARQUBE_FRONTEND_PROJECT_KEY"],
+                os.environ["SONARQUBE_FRONTEND_PROJECT_NAME"],
+            ),
+        )
+
+        def fail(message: str) -> None:
+            print(message, file=sys.stderr)
+            raise SystemExit(1)
+
+        def require_real_secret(name: str, value: str) -> None:
+            if not value or (value.startswith("<") and value.endswith(">")):
+                fail(f"{name} must be set in mcps/.env before running sonarqube-init.")
+
+        require_real_secret("SONARQUBE_ADMIN_PASSWORD", admin_password)
+
+        def request(method: str, path: str, data: dict[str, str] | None = None) -> dict:
+            encoded_data = None
+            headers = {"Accept": "application/json"}
+            if data is not None:
+                encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+
+            token = base64.b64encode(f"{admin_user}:{admin_password}".encode()).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
+            req = urllib.request.Request(
+                f"{sonar_url}{path}",
+                data=encoded_data,
+                headers=headers,
+                method=method,
+            )
+            with urllib.request.urlopen(req, timeout=15) as response:
+                body = response.read().decode("utf-8")
+            return json.loads(body) if body else {}
+
+        last_error = ""
+        for _ in range(60):
+            try:
+                status = request("GET", "/api/system/status").get("status")
+                if status == "UP":
+                    print("SonarQube is UP.")
+                    break
+                last_error = f"status={status!r}"
+            except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+                last_error = str(exc)
+            time.sleep(5)
+        else:
+            fail(f"Timed out waiting for SonarQube at {sonar_url}: {last_error}")
+
+        for key, name in projects:
+            query = urllib.parse.urlencode({"projects": key})
+            payload = request("GET", f"/api/projects/search?{query}")
+            components = payload.get("components", [])
+            if any(component.get("key") == key for component in components):
+                print(f"SonarQube project already exists: {key}")
+                continue
+
+            request("POST", "/api/projects/create", {"project": key, "name": name})
+            print(f"Created SonarQube project: {key}")
+
+        try:
+            request("POST", "/api/user_tokens/revoke", {"name": token_name})
+            print(f"Revoked existing SonarQube token: {token_name}")
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {400, 404}:
+                raise
+
+        token_payload = request("POST", "/api/user_tokens/generate", {"name": token_name})
+        token = token_payload.get("token")
+        if not isinstance(token, str) or not token:
+            fail("SonarQube did not return a token.")
+
+        values = {
+            "SONARQUBE_URL": sonar_url,
+            "SONARQUBE_TOKEN": token,
+            "SONARQUBE_TOOLSETS": os.environ["SONARQUBE_TOOLSETS"],
+            "SONARQUBE_BACKEND_PROJECT_KEY": os.environ["SONARQUBE_BACKEND_PROJECT_KEY"],
+            "SONARQUBE_FRONTEND_PROJECT_KEY": os.environ["SONARQUBE_FRONTEND_PROJECT_KEY"],
+        }
+        secret_file.parent.mkdir(parents=True, exist_ok=True)
+        secret_file.write_text(
+            "".join(f"{key}={value}\n" for key, value in values.items()),
+            encoding="utf-8",
+        )
+        secret_file.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        print(f"Wrote SonarQube MCP credentials to {secret_file}.")
+        PY
+
+  sonarqube-mcp:
+    image: mcp/sonarqube
+    profiles: ["mcp"]
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    volumes:
+      - risktrace_mcp_secrets:/run/risktrace-mcp:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -eu
+        SONARQUBE_SECRET_FILE="$${SONARQUBE_SECRET_FILE:-/run/risktrace-mcp/sonarqube.env}"
+        if [ ! -f "$${SONARQUBE_SECRET_FILE}" ]; then
+          echo "Missing $${SONARQUBE_SECRET_FILE}. Run sonarqube-init with the setup profile first." >&2
+          exit 1
+        fi
+        set -a
+        . "$${SONARQUBE_SECRET_FILE}"
+        set +a
+        export JAVA_HOME="$${JAVA_HOME:-/opt/jdk/jdk-21}"
+        export PATH="$${JAVA_HOME}/bin:$${PATH}"
+        exec /usr/local/bin/docker-entrypoint
+
+  sonar-scan-backend:
+    image: sonarsource/sonar-scanner-cli
+    profiles: ["scan"]
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    volumes:
+      - ..:/usr/src
+      - risktrace_mcp_secrets:/run/risktrace-mcp:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -eu
+        SONARQUBE_SECRET_FILE="$${SONARQUBE_SECRET_FILE:-/run/risktrace-mcp/sonarqube.env}"
+        if [ ! -f "$${SONARQUBE_SECRET_FILE}" ]; then
+          echo "Missing $${SONARQUBE_SECRET_FILE}. Run sonarqube-init with the setup profile first." >&2
+          exit 1
+        fi
+        set -a
+        . "$${SONARQUBE_SECRET_FILE}"
+        set +a
+        export SONAR_HOST_URL="$${SONARQUBE_URL}"
+        export SONAR_TOKEN="$${SONARQUBE_TOKEN}"
+        exec /usr/bin/entrypoint.sh sonar-scanner \
+          -Dproject.settings=mcps/sonarqube/backend-project.properties
+
+  sonar-scan-frontend:
+    image: sonarsource/sonar-scanner-cli
+    profiles: ["scan"]
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    volumes:
+      - ..:/usr/src
+      - risktrace_mcp_secrets:/run/risktrace-mcp:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -eu
+        SONARQUBE_SECRET_FILE="$${SONARQUBE_SECRET_FILE:-/run/risktrace-mcp/sonarqube.env}"
+        if [ ! -f "$${SONARQUBE_SECRET_FILE}" ]; then
+          echo "Missing $${SONARQUBE_SECRET_FILE}. Run sonarqube-init with the setup profile first." >&2
+          exit 1
+        fi
+        set -a
+        . "$${SONARQUBE_SECRET_FILE}"
+        set +a
+        export SONAR_HOST_URL="$${SONARQUBE_URL}"
+        export SONAR_TOKEN="$${SONARQUBE_TOKEN}"
+        exec /usr/bin/entrypoint.sh sonar-scanner \
+          -Dproject.settings=mcps/sonarqube/frontend-project.properties
+
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    network_mode: host
+    environment:
+      ZAP_PORT: ${ZAP_PORT:-8090}
+      ZAP_API_KEY: ${ZAP_API_KEY:?Set ZAP_API_KEY in mcps/.env}
+      ZAP_MCP_PORT: ${ZAP_MCP_PORT:-8282}
+      ZAP_MCP_SECURITY_KEY: ${ZAP_MCP_SECURITY_KEY:?Set ZAP_MCP_SECURITY_KEY in mcps/.env}
+    command:
+      - bash
+      - -lc
+      - |
+        if ! /zap/zap.sh -cmd -addoninstall mcp; then
+          if ! ls /home/zap/.ZAP/plugin/mcp-*.zap >/dev/null 2>&1; then
+            echo "Could not install the official ZAP MCP add-on." >&2
+            exit 1
+          fi
+        fi
+
+        exec /zap/zap.sh -daemon \
+          -host 127.0.0.1 \
+          -port "$${ZAP_PORT}" \
+          -config "api.key=$${ZAP_API_KEY}" \
+          -config api.addrs.addr.name=127.0.0.1 \
+          -config api.addrs.addr.regex=false \
+          -config api.disablekey=false \
+          -config "mcp.port=$${ZAP_MCP_PORT}" \
+          -config mcp.securityKeyEnabled=true \
+          -config "mcp.securityKey=$${ZAP_MCP_SECURITY_KEY}" \
+          -config mcp.secureOnly=false \
+          -config mcp.recordInHistory=false
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import os, urllib.parse, urllib.request; key=urllib.parse.quote(os.environ['ZAP_API_KEY']); port=os.environ['ZAP_PORT']; urllib.request.urlopen('http://127.0.0.1:%s/JSON/core/view/version/?apikey=%s' % (port, key), timeout=5)\"",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    volumes:
+      - risktrace_zap_home:/home/zap/.ZAP
+      - risktrace_zap_work:/zap/wrk
+
+  owasp-zap-mcp:
+    image: node:22-alpine
+    profiles: ["mcp"]
+    network_mode: host
+    environment:
+      NO_UPDATE_NOTIFIER: "1"
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
+      NPM_CONFIG_LOGLEVEL: silent
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+      ZAP_MCP_URL: ${ZAP_MCP_URL:-http://127.0.0.1:8282}
+      ZAP_MCP_SECURITY_KEY: ${ZAP_MCP_SECURITY_KEY:?Set ZAP_MCP_SECURITY_KEY in mcps/.env}
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -eu
+        case "$${ZAP_MCP_SECURITY_KEY:-}" in
+          ""|\<*\>)
+            echo "ZAP_MCP_SECURITY_KEY must be set in mcps/.env." >&2
+            exit 1
+            ;;
+        esac
+        export ZAP_MCP_AUTH_HEADER="$${ZAP_MCP_SECURITY_KEY}"
+        unset ZAP_MCP_SECURITY_KEY ZAP_API_KEY
+        exec npx --yes --quiet mcp-remote \
+          "$${ZAP_MCP_URL}" \
+          --transport http-only \
+          --allow-http \
+          --silent \
+          --header "Authorization:$${ZAP_MCP_AUTH_HEADER}"
+
+  sonatype-guide-mcp:
+    image: node:22-alpine
+    profiles: ["mcp"]
+    environment:
+      NO_UPDATE_NOTIFIER: "1"
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
+      NPM_CONFIG_LOGLEVEL: silent
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+      SONATYPE_GUIDE_MCP_TOKEN: ${SONATYPE_GUIDE_MCP_TOKEN:-}
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -eu
+        case "$${SONATYPE_GUIDE_MCP_TOKEN:-}" in
+          ""|\<*\>)
+            echo "SONATYPE_GUIDE_MCP_TOKEN must be set in mcps/.env." >&2
+            exit 1
+            ;;
+        esac
+        exec npx --yes --quiet mcp-remote \
+          https://mcp.guide.sonatype.com/mcp \
+          --header "Authorization: Bearer $${SONATYPE_GUIDE_MCP_TOKEN}"
+
+volumes:
+  risktrace_mcp_secrets:
+  risktrace_sonarqube_db:
+  risktrace_sonarqube_data:
+  risktrace_sonarqube_extensions:
+  risktrace_sonarqube_logs:
+  risktrace_zap_home:
+  risktrace_zap_work:
