@@ -1,0 +1,207 @@
+name: Security Gates — DAST + Performance
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Target URL (default: prod)"
+        required: false
+        default: ""
+      run_stress:
+        description: "Include stress test (true/false)"
+        required: false
+        default: "false"
+
+env:
+  TARGET: ${{ inputs.target_url || secrets.PROD_URL }}
+
+jobs:
+  # ── DAST ─────────────────────────────────────────────────────────────────
+  zap-baseline:
+    name: "OWASP ZAP: baseline"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ env.TARGET }}
+          rules_file_name: .github/zap-rules.tsv
+          cmd_options: "-l HIGH -z '-config scanner.threadPerHost=5'"
+          fail_action: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-baseline
+          path: report_html.html
+
+  zap-active:
+    name: "OWASP ZAP: active scan"
+    runs-on: ubuntu-latest
+    needs: zap-baseline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: zaproxy/action-full-scan@v0.10.0
+        with:
+          target: ${{ env.TARGET }}
+          rules_file_name: .github/zap-rules.tsv
+          cmd_options: "-l HIGH"
+          fail_action: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-active
+          path: report_html.html
+
+  # ── PERFORMANCE ───────────────────────────────────────────────────────────
+  k6-smoke:
+    name: "k6: smoke test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6/smoke-test.js
+          flags: --out json=k6-smoke-results.json
+        env:
+          TARGET_URL: ${{ env.TARGET }}
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-smoke
+          path: "k6-smoke-*.json"
+
+  k6-load:
+    name: "k6: load test — SLO gate (p95 < 2s)"
+    runs-on: ubuntu-latest
+    needs: k6-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6/load-test.js
+          flags: --out json=k6-load-results.json
+        env:
+          TARGET_URL: ${{ env.TARGET }}
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      - name: Assert SLO thresholds
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          with open("k6-load-summary.json") as f:
+              data = json.load(f)
+          m = data.get("metrics", {})
+          p95 = m.get("http_req_duration", {}).get("values", {}).get("p(95)", 9999)
+          err = m.get("http_req_failed", {}).get("values", {}).get("rate", 1)
+          print(f"p95={p95:.0f}ms  errors={err*100:.2f}%")
+          failures = []
+          if p95 > 2000: failures.append(f"p95 {p95:.0f}ms > 2000ms SLO")
+          if err > 0.01: failures.append(f"error rate {err*100:.2f}% > 1% SLO")
+          if failures:
+              [print(f"FAIL: {f}") for f in failures]
+              sys.exit(1)
+          print("SLOs met.")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-load
+          path: "k6-load-*.json"
+
+  k6-stress:
+    name: "k6: stress test (breaking point)"
+    runs-on: ubuntu-latest
+    needs: k6-load
+    if: inputs.run_stress == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: grafana/k6-action@v0.3.1
+        continue-on-error: true
+        with:
+          filename: k6/stress-test.js
+          flags: --out json=k6-stress-results.json
+        env:
+          TARGET_URL: ${{ env.TARGET }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-stress
+          path: "k6-stress-*.json"
+
+  # ── DEPENDENCY AUDIT ──────────────────────────────────────────────────────
+  dependency-audit:
+    name: "Deps: pip-audit + OWASP DC"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Export manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      - name: pip-audit
+        working-directory: apps/backend
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --format json -o pip-audit.json
+          pip-audit -r requirements.txt
+
+      - uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "risk-trace-control-tower"
+          path: "apps/backend"
+          format: "HTML,JSON"
+          out: "owasp-reports"
+          args: "--enableRetired --failOnCVSS 7 --suppression .github/owasp-suppressions.xml"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-audit
+          path: |
+            apps/backend/pip-audit.json
+            owasp-reports/
+
+  # ── CONTAINER SCAN ────────────────────────────────────────────────────────
+  container-scan:
+    name: "Trivy: container scan (HIGH + CRITICAL)"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.ECR_REGISTRY }}/backend:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.ECR_REGISTRY }}/frontend:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"

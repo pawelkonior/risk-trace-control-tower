@@ -1,0 +1,5 @@
+# NLB and EKS nodes require unrestricted egress (internet-facing load balancer + ECR/API pulls)
+AVD-AWS-0104
+
+# Public subnets intentionally assign public IPs — required for NLB and NAT Gateways
+AVD-AWS-0164

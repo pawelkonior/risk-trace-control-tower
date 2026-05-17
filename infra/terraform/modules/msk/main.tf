@@ -71,9 +71,9 @@ resource "aws_secretsmanager_secret_version" "scram" {
 # ============================================================================
 
 resource "aws_msk_configuration" "main" {
-  name              = "${var.project_name}-${var.environment}-kafka-config"
-  description       = "Kafka 3.7 KRaft configuration for ${var.project_name} ${var.environment}"
-  kafka_versions    = ["3.7.x"]
+  name           = "${var.project_name}-${var.environment}-kafka-config"
+  description    = "Kafka 3.7 KRaft configuration for ${var.project_name} ${var.environment}"
+  kafka_versions = ["3.7.x"]
 
   server_properties = <<-EOF
     auto.create.topics.enable=false
@@ -185,7 +185,8 @@ resource "aws_msk_scram_secret_association" "main" {
 
 resource "aws_cloudwatch_log_group" "msk" {
   name              = "/aws/msk/${var.project_name}-${var.environment}"
-  retention_in_days = 90
+  retention_in_days = 365
+  kms_key_id        = var.kms_key_arn
 
   tags = merge(
     var.tags,

@@ -75,6 +75,39 @@ resource "aws_db_parameter_group" "postgres16" {
 }
 
 # ============================================================================
+# Enhanced Monitoring IAM Role (CKV_AWS_118)
+# ============================================================================
+
+resource "aws_iam_role" "rds_monitoring" {
+  name = "${var.project_name}-${var.environment}-rds-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "monitoring.rds.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-${var.environment}-rds-monitoring-role"
+      Environment = var.environment
+      Project     = var.project_name
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+  role       = aws_iam_role.rds_monitoring.name
+}
+
+# ============================================================================
 # RDS Instance - PostgreSQL 16.2
 # ============================================================================
 
@@ -130,7 +163,17 @@ resource "aws_db_instance" "main" {
   performance_insights_kms_key_id = var.environment == "prod" ? var.kms_key_arn : null
 
   # Auto Minor Version Upgrade
-  auto_minor_version_upgrade = false
+  auto_minor_version_upgrade = true
+
+  # IAM Authentication (CKV_AWS_161)
+  iam_database_authentication_enabled = true
+
+  # Enhanced Monitoring (CKV_AWS_118)
+  monitoring_interval = 60
+  monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+
+  # Copy tags to snapshots (CKV2_AWS_60)
+  copy_tags_to_snapshot = true
 
   tags = merge(
     var.tags,

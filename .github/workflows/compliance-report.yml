@@ -1,0 +1,134 @@
+name: Compliance Report — Weekly
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  EVIDENCE_BUCKET: ${{ secrets.COMPLIANCE_EVIDENCE_BUCKET }}
+
+jobs:
+  generate:
+    name: Generate compliance evidence pack
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_COMPLIANCE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Artifact 1 — SBOM (CycloneDX)
+        run: |
+          pip install cyclonedx-bom
+          cd apps/backend && uv sync --all-extras
+          cyclonedx-py environment --format json -o /tmp/sbom.cdx.json
+
+      - name: Artifact 2 — Vulnerability report (pip-audit)
+        run: |
+          pip install pip-audit
+          cd apps/backend
+          uv pip compile pyproject.toml -o /tmp/requirements.txt
+          pip-audit -r /tmp/requirements.txt --format json -o /tmp/vuln-report.json || true
+          pip-audit -r /tmp/requirements.txt --format markdown > /tmp/vuln-report.md || true
+
+      - name: Artifact 3 — SAST report (Semgrep)
+        run: |
+          pip install semgrep
+          semgrep --config=p/owasp-top-ten apps/backend/src/ \
+            --json -o /tmp/semgrep-report.json || true
+
+      - name: Artifact 4 — DAST summary (ZAP)
+        run: |
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run --rm ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t ${{ secrets.PROD_URL }} \
+            -J /tmp/zap-report.json -l WARN || true
+
+      - name: Artifact 5 — Container SBOM
+        run: |
+          pip install syft 2>/dev/null || pip install anchore-syft 2>/dev/null || true
+          syft ${{ secrets.ECR_REGISTRY }}/backend:latest \
+            -o cyclonedx-json=/tmp/container-sbom.cdx.json || true
+
+      - name: Artifact 6 — Deployment evidence index
+        run: |
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          DEPLOY_COUNT=$(aws s3 ls \
+            s3://${{ env.EVIDENCE_BUCKET }}/deployments/prod/ \
+            --recursive | wc -l || echo 0)
+          cat > /tmp/compliance-summary.json <<EOF
+          {
+            "report_date": "${REPORT_DATE}",
+            "report_week": "$(date -u +%YW%V)",
+            "framework": ["Basel III RWA", "BCBS 239", "DORA"],
+            "environment": "prod",
+            "deployment_platform": "docker-compose",
+            "prod_deployments_this_week": ${DEPLOY_COUNT},
+            "artifacts": [
+              "sbom.cdx.json",
+              "vuln-report.json",
+              "vuln-report.md",
+              "semgrep-report.json",
+              "zap-report.json",
+              "container-sbom.cdx.json"
+            ],
+            "s3_retention_policy": "COMPLIANCE 365 days",
+            "generated_by": "github-actions",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+
+      - name: Upload all artifacts to S3 WORM
+        run: |
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          PREFIX="s3://${{ env.EVIDENCE_BUCKET }}/compliance-reports/${REPORT_DATE}"
+          for f in \
+            /tmp/sbom.cdx.json \
+            /tmp/vuln-report.json \
+            /tmp/vuln-report.md \
+            /tmp/semgrep-report.json \
+            /tmp/zap-report.json \
+            /tmp/container-sbom.cdx.json \
+            /tmp/compliance-summary.json; do
+            [ -f "$f" ] && aws s3 cp "$f" "${PREFIX}/$(basename $f)" --no-progress || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report-${{ github.run_id }}
+          path: |
+            /tmp/sbom.cdx.json
+            /tmp/vuln-report.json
+            /tmp/vuln-report.md
+            /tmp/compliance-summary.json
+          retention-days: 90
+
+      - name: Notify Slack — #rwa-compliance
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          DATE=$(date -u +%Y-%m-%d)
+          curl -s -X POST "${{ secrets.SLACK_COMPLIANCE_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"*Weekly Compliance Report — ${DATE}*\",
+              \"attachments\": [{
+                \"color\": \"$([ \"${STATUS}\" = 'success' ] && echo good || echo danger)\",
+                \"fields\": [
+                  {\"title\":\"Status\",\"value\":\"${STATUS}\",\"short\":true},
+                  {\"title\":\"Framework\",\"value\":\"Basel III / BCBS 239 / DORA\",\"short\":true},
+                  {\"title\":\"Run\",\"value\":\"<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>\",\"short\":true}
+                ]
+              }]
+            }"

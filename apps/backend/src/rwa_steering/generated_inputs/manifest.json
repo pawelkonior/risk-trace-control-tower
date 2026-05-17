@@ -77,8 +77,8 @@
     "cva_hedges.csv": "592abc7666ddf732212e2448bfb7dc3a366086893d0808723d58f0e9b595ab62",
     "leverage_exposures.csv": "86cad983c6322c527c16888d747a88554ef3fc0a4a2c9a752ae388e85e4548da",
     "leverage_off_balance_sheet_items.csv": "62b1453832aa1c9855c719ca15b33e6746a82ee7626da3171a39d53164c92766",
-    "README.md": "6009707145139dc5f558950f726e46bfcb8fad695ad11ef7a074e289168c66fc",
-    "validation_report.json": "2bc68883119fe5c7c25d401a7b7cc4b30b0f4371e04014510b5839312e8e868c"
+    "README.md": "a27bd4ca2ccc8d55414fcf038bceae18f1ca3461e789bfc72168747eb2e77b9d",
+    "validation_report.json": "566ff826dab0c62bec22e0c93c1e6190db809b24b10a425fcef07018d6a81595"
   },
   "validation_status": "PASSED",
   "known_limitations": [

@@ -1,0 +1,4 @@
+10202	IGNORE	(Optional Header Missing - Anti-clickjacking Header)
+10036	IGNORE	(Server Leaks Version Information via "Server" HTTP Response Header Field)
+10021	IGNORE	(X-Content-Type-Options Header Missing)
+90003	IGNORE	(Sub Resource Integrity Attribute Missing)

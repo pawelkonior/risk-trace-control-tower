@@ -1,0 +1,155 @@
+{
+  "uid": "rwa-dora",
+  "title": "RWA — DORA Metrics",
+  "tags": ["rwa", "dora", "engineering"],
+  "timezone": "utc",
+  "schemaVersion": 38,
+  "refresh": "1h",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Deployment Frequency",
+      "description": "Deployments to prod per week (Elite: multiple per day)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "count_over_time(github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\",conclusion=\"success\"}[7d])",
+          "legendFormat": "deploys/week"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 7 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Lead Time for Changes (days)",
+      "description": "Commit to prod deploy (Elite: <1 hour)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "avg(github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\"}) / 86400",
+          "legendFormat": "days"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 7 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Change Failure Rate",
+      "description": "% deploys causing incident (Elite: 0-15%)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "count_over_time(github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\",conclusion=\"failure\"}[30d]) / count_over_time(github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\"}[30d])",
+          "legendFormat": "failure rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 0.15 },
+              { "color": "red", "value": 0.30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "MTTR (hours)",
+      "description": "Time to restore after incident (Elite: <1 hour)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "avg(alertmanager_alerts_resolved_duration_seconds{alertname=~\"RWA.*\",severity=\"critical\"}) / 3600",
+          "legendFormat": "MTTR (h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 24 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Deployment History (30d)",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\",conclusion=\"success\"}",
+          "legendFormat": "success"
+        },
+        {
+          "expr": "github_actions_workflow_run_duration_seconds{workflow=\"Deploy — prod\",conclusion=\"failure\"}",
+          "legendFormat": "failure"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "CI Pipeline Duration",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "github_actions_workflow_run_duration_seconds{workflow=\"CI\"}",
+          "legendFormat": "CI duration"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Incidents by Severity",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "count_over_time(ALERTS{alertname=~\"RWA.*\",alertstate=\"firing\",severity=\"critical\"}[1d])",
+          "legendFormat": "critical"
+        },
+        {
+          "expr": "count_over_time(ALERTS{alertname=~\"RWA.*\",alertstate=\"firing\",severity=\"warning\"}[1d])",
+          "legendFormat": "warning"
+        }
+      ]
+    }
+  ]
+}

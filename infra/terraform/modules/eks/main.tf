@@ -34,6 +34,7 @@ data "tls_certificate" "cluster" {
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.project_name}-${var.environment}/cluster"
   retention_in_days = var.log_retention_days
+  kms_key_id        = var.kms_key_arn
 
   tags = merge(
     var.tags,
@@ -99,7 +100,14 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [var.eks_nodes_security_group_id]
   }
 
-  enabled_cluster_log_types = ["api", "audit", "authenticator"]
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = var.kms_key_arn
+    }
+  }
 
   depends_on = [
     aws_cloudwatch_log_group.eks_cluster,

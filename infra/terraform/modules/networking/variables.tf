@@ -51,6 +51,11 @@ variable "database_subnet_cidrs" {
   default     = ["10.0.20.0/24", "10.0.21.0/24", "10.0.22.0/24"]
 }
 
+variable "kms_key_arn" {
+  description = "KMS key ARN for CloudWatch log group encryption (VPC flow logs)"
+  type        = string
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

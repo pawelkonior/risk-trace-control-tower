@@ -1,0 +1,8 @@
+# Nginx reverse-proxy configs: $host in proxy_set_header is standard practice
+apps/frontend/nginx.conf
+docker/nginx-host/rwa.conf
+
+# Terraform infra: public subnets intentional (NLB/NAT), RDS logging via variable
+# Real IaC security covered by checkov + tfsec in iac-validate.yml
+infra/terraform/modules/networking/main.tf
+infra/terraform/modules/rds/main.tf

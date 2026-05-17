@@ -37,6 +37,8 @@ locals {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 # ============================================================================
 # KMS Key — shared encryption key for all services
 # ============================================================================
@@ -45,6 +47,21 @@ resource "aws_kms_key" "main" {
   description             = "RWA Control Tower ${local.environment} encryption key"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableRootAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     Name = "${local.project_name}-${local.environment}-kms"
@@ -66,13 +83,14 @@ module "networking" {
   environment  = local.environment
   project_name = local.project_name
 
-  vpc_cidr             = "10.1.0.0/16"
-  availability_zones   = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
-  public_subnet_cidrs  = ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
-  private_subnet_cidrs = ["10.1.11.0/24", "10.1.12.0/24", "10.1.13.0/24"]
+  vpc_cidr              = "10.1.0.0/16"
+  availability_zones    = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  public_subnet_cidrs   = ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
+  private_subnet_cidrs  = ["10.1.11.0/24", "10.1.12.0/24", "10.1.13.0/24"]
   database_subnet_cidrs = ["10.1.21.0/24", "10.1.22.0/24", "10.1.23.0/24"]
 
   single_nat_gateway = false # One NAT GW per AZ for HA
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }
@@ -92,10 +110,10 @@ module "eks" {
   private_subnet_ids          = module.networking.private_subnet_ids
   eks_nodes_security_group_id = module.networking.eks_nodes_security_group_id
 
-  system_node_instance_type      = "t3.medium"
-  system_node_desired_size       = 3
-  system_node_min_size           = 3
-  system_node_max_size           = 6
+  system_node_instance_type = "t3.medium"
+  system_node_desired_size  = 3
+  system_node_min_size      = 3
+  system_node_max_size      = 6
 
   application_node_instance_type_dev  = "t3.large"
   application_node_instance_type_prod = "m5.xlarge"
@@ -104,6 +122,7 @@ module "eks" {
   application_node_max_size           = 30
 
   log_retention_days = 365
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }

@@ -1,0 +1,171 @@
+name: Enterprise Gates (scheduled)
+
+# Requires external services:
+#   SonarQube — SONAR_TOKEN, SONAR_HOST_URL
+#   Sonatype Nexus IQ — NEXUS_IQ_URL, NEXUS_IQ_USERNAME, NEXUS_IQ_PASSWORD
+#   OWASP ZAP — runs via Docker, no setup needed
+#   k6 Cloud (optional) — K6_CLOUD_TOKEN
+#
+# Run daily at 02:00 UTC, or manually.
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+env:
+  UV_VERSION: "0.5.0"
+  PROD_URL: ${{ secrets.PROD_URL }}
+
+jobs:
+  # ── CODE QUALITY ─────────────────────────────────────────────────────────
+  sonarqube:
+    name: "Quality: SonarQube + Quality Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Generate coverage
+        working-directory: apps/backend
+        run: |
+          uv sync --all-extras
+          uv run pytest tests/ --cov=src --cov-report=xml -q
+
+      - name: Bandit
+        run: |
+          pip install bandit
+          bandit -r apps/backend/src/ -ll -f json -o apps/backend/bandit-report.json || true
+
+      - uses: sonarsource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.python.coverage.reportPaths=apps/backend/coverage.xml
+            -Dsonar.python.bandit.reportPaths=apps/backend/bandit-report.json
+
+      - name: Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  # ── SUPPLY CHAIN ─────────────────────────────────────────────────────────
+  sonatype:
+    name: "Supply Chain: Sonatype Nexus IQ"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Export manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      - uses: sonatype-nexus-community/nexus-iq-github-action@main
+        with:
+          serverUrl: ${{ secrets.NEXUS_IQ_URL }}
+          username: ${{ secrets.NEXUS_IQ_USERNAME }}
+          password: ${{ secrets.NEXUS_IQ_PASSWORD }}
+          applicationId: risk-trace-control-tower
+          stage: OPERATE
+          target: apps/backend/requirements.txt
+
+  owasp-dc:
+    name: "Supply Chain: OWASP Dependency Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Export manifest
+        working-directory: apps/backend
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      - uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: risk-trace-control-tower
+          path: apps/backend
+          format: HTML,JSON
+          out: owasp-reports
+          args: "--enableRetired --failOnCVSS 7 --suppression .github/owasp-suppressions.xml"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dc-report
+          path: owasp-reports/
+
+  # ── DAST ─────────────────────────────────────────────────────────────────
+  zap-baseline:
+    name: "DAST: OWASP ZAP baseline"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ env.PROD_URL }}
+          rules_file_name: .github/zap-rules.tsv
+          cmd_options: "-l HIGH"
+          fail_action: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: report_html.html
+
+  # ── PERFORMANCE ───────────────────────────────────────────────────────────
+  k6-load:
+    name: "Performance: k6 load test (p95 < 2s)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6/load-test.js
+          flags: --out json=k6-load-results.json
+        env:
+          TARGET_URL: ${{ env.PROD_URL }}
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      - name: Assert SLO
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          with open("k6-load-summary.json") as f:
+              data = json.load(f)
+          m = data.get("metrics", {})
+          p95 = m.get("http_req_duration", {}).get("values", {}).get("p(95)", 9999)
+          err = m.get("http_req_failed", {}).get("values", {}).get("rate", 1)
+          print(f"p95={p95:.0f}ms  errors={err*100:.2f}%")
+          failures = []
+          if p95 > 2000: failures.append(f"p95 {p95:.0f}ms > 2000ms SLO")
+          if err > 0.01:  failures.append(f"error rate {err*100:.2f}% > 1% SLO")
+          if failures:
+              [print(f"FAIL: {f}") for f in failures]
+              sys.exit(1)
+          print("SLOs met.")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-load-results
+          path: "k6-*.json"

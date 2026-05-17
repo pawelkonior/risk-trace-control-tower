@@ -1,0 +1,161 @@
+{
+  "uid": "rwa-kafka",
+  "title": "RWA — Kafka / MSK",
+  "tags": ["rwa", "kafka", "msk"],
+  "timezone": "utc",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "query": "label_values(kafka_consumer_group_lag, topic)",
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "consumergroup",
+        "type": "query",
+        "query": "label_values(kafka_consumer_group_lag{topic=~\"$topic\"}, consumergroup)",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Broker Count",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "kafka_brokers",
+          "legendFormat": "brokers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Under-Replicated Partitions",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions)",
+          "legendFormat": "under-replicated"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Offline Partitions",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "kafka_controller_kafkacontroller_offlinepartitionscount",
+          "legendFormat": "offline"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Audit Topic Lag (EBA GL)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(kafka_consumer_group_lag{topic=\"rwa.audit.events\"})",
+          "legendFormat": "audit lag"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Consumer Lag by Topic",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumer_group_lag{topic=~\"$topic\", consumergroup=~\"$consumergroup\"}) by (topic, consumergroup)",
+          "legendFormat": "{{ topic }} / {{ consumergroup }}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Messages In/Out per Topic",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_topic_partition_current_offset{topic=~\"$topic\"}[5m])) by (topic)",
+          "legendFormat": "{{ topic }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Network I/O",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesin_total[5m]))",
+          "legendFormat": "bytes in"
+        },
+        {
+          "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total[5m]))",
+          "legendFormat": "bytes out"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    }
+  ]
+}
