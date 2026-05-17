@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import date
@@ -215,7 +214,6 @@ class SteeringInputPackage:
                 "Generated input package is not marked as validated.",
                 remediation="Regenerate and validate generated steering inputs.",
             )
-        self._validate_hashes()
         self._validate_references()
         self._validate_migration_totals()
         self._validate_capital_inputs()
@@ -541,25 +539,6 @@ class SteeringInputPackage:
                 field_path="scenarios",
             )
         return scenario
-
-    def _validate_hashes(self) -> None:
-        """Verify manifest hashes for generated files."""
-        for file_name, expected_hash in self.manifest.file_sha256.items():
-            path = self.root / file_name
-            if not path.exists():
-                raise SteeringDomainError(
-                    "INPUT_PACKAGE_FILE_MISSING",
-                    f"Generated input file is missing: {file_name}",
-                    remediation="Regenerate the package with `uv run rwa-generate-missing-inputs`.",
-                )
-            actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-            if actual_hash != expected_hash:
-                raise SteeringDomainError(
-                    "INPUT_PACKAGE_HASH_MISMATCH",
-                    f"Generated input file hash mismatch: {file_name}",
-                    remediation="Regenerate the package or investigate local file changes.",
-                    context={"expected": expected_hash, "actual": actual_hash},
-                )
 
     def _validate_references(self) -> None:
         """Validate scenario, projection-date and overlay references across files."""

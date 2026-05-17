@@ -78,6 +78,16 @@ def test_loaded_input_package_projects_rows_from_generated_assumptions() -> None
     assert package.leverage_off_balance_sheet_items_for("BANKING_BOOK_CORE")
 
 
+def test_loaded_input_package_does_not_block_on_manifest_hash_drift(tmp_path) -> None:
+    """Runtime package loading should not fail solely because generated file hashes drift."""
+    generate_missing_inputs(tmp_path)
+    (tmp_path / "README.md").write_text("local documentation edit\n", encoding="utf-8")
+
+    package = load_steering_input_package(tmp_path)
+
+    assert package.manifest.validation_status == "PASSED"
+
+
 def test_generated_open_book_projection_renews_matured_exposures() -> None:
     """Open-book forecast should use renewal assumptions instead of pure run-off."""
     package = load_steering_input_package()
