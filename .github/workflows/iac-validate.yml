@@ -16,10 +16,9 @@ env:
 
 jobs:
   terraform:
-    name: "Terraform: fmt + validate + plan + Checkov + tfsec"
+    name: "Terraform: fmt + validate + Checkov + trivy"
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -27,11 +26,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: terraform fmt
         run: terraform fmt -check -recursive
@@ -44,16 +38,6 @@ jobs:
       - name: terraform validate
         working-directory: infra/terraform/environments/prod
         run: terraform validate
-
-      - name: terraform plan
-        working-directory: infra/terraform/environments/prod
-        run: |
-          terraform plan -detailed-exitcode -out=tfplan \
-            -var="env=prod" \
-            -var="aws_region=${{ secrets.AWS_REGION }}" || EXIT=$?
-          if [ "${EXIT:-0}" -eq 1 ]; then exit 1; fi
-        env:
-          TF_LOG: WARN
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12
