@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_CHAT_STATUS_CODES = {429, 500, 502, 503, 504}
+_MAX_CHAT_ATTEMPTS = 3
 
 
 class WatsonxError(Exception):
@@ -166,6 +170,10 @@ class WatsonxClient:
                 "content": (
                     "You are an expert RWA analyst. Respond ONLY with valid JSON "
                     "containing exactly these fields: executive_summary, cro_view, cfo_view. "
+                    "Each value may be a multi-line English bullet-list string when requested. "
+                    "Encode line breaks inside JSON string values as escaped \\n characters. "
+                    "Write for RWA analysts. Do not mention Python, deterministic tools, "
+                    "LLMs, prompts, guardrails, or internal workflow mechanics. "
                     "Do not include any text outside the JSON object."
                 ),
             },
@@ -192,16 +200,7 @@ class WatsonxClient:
         )
 
         try:
-            response = httpx.post(
-                f"{self.url}/ml/v1/text/chat?version={self.api_version}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                json=payload,
-                timeout=self.http_timeout,
-            )
+            response = self._post_chat_with_retries(token=token, payload=payload)
             response.raise_for_status()
             response_data = response.json()
 
@@ -242,6 +241,47 @@ class WatsonxClient:
         except Exception as exc:
             logger.error("Unexpected error during watsonx chat: %s", exc)
             raise WatsonxAPIError(f"Watsonx chat error: {exc}") from exc
+
+    def _post_chat_with_retries(self, *, token: str, payload: dict[str, Any]) -> httpx.Response:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        response: httpx.Response | None = None
+        for attempt in range(1, _MAX_CHAT_ATTEMPTS + 1):
+            response = httpx.post(
+                f"{self.url}/ml/v1/text/chat?version={self.api_version}",
+                headers=headers,
+                json=payload,
+                timeout=self.http_timeout,
+            )
+            if response.status_code not in _RETRYABLE_CHAT_STATUS_CODES:
+                return response
+            if attempt == _MAX_CHAT_ATTEMPTS:
+                return response
+
+            delay_seconds = self._chat_retry_delay(response=response, attempt=attempt)
+            logger.warning(
+                "Watsonx chat returned retryable status %s; retrying in %.2fs",
+                response.status_code,
+                delay_seconds,
+            )
+            time.sleep(delay_seconds)
+
+        if response is None:
+            raise WatsonxAPIError("Watsonx chat did not return a response")
+        return response
+
+    @staticmethod
+    def _chat_retry_delay(*, response: httpx.Response, attempt: int) -> float:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return min(max(float(retry_after), 0.5), 5.0)
+            except ValueError:
+                pass
+        return min(0.8 * attempt + 0.3, 3.0)
 
     def _extract_generated_text(self, response_data: dict[str, Any]) -> str:
         """Extract generated text from watsonx response."""
@@ -287,7 +327,7 @@ class WatsonxClient:
                 raise WatsonxResponseError("No JSON object found in response", raw_text=text)
 
             json_text = text[json_start:json_end]
-            commentary = json.loads(json_text)
+            commentary = json.loads(json_text, strict=False)
 
             # Validate required fields
             required_fields = ["executive_summary", "cro_view", "cfo_view"]

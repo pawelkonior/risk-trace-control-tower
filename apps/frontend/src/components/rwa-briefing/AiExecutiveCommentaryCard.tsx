@@ -19,6 +19,9 @@ import type { RwaBriefingData } from "../../hooks/useRwaBriefingData";
 import { Card } from "../rwa-dashboard/Card";
 
 type CommentaryTab = "executive_summary" | "cro_view" | "cfo_view";
+type CommentaryBlock =
+  | { kind: "paragraph"; text: string }
+  | { kind: "list"; items: string[] };
 
 type AiExecutiveCommentaryCardProps = {
   data: RwaBriefingData;
@@ -34,6 +37,15 @@ const tabLabels: Record<CommentaryTab, string> = {
   cfo_view: "CFO View",
 };
 const MINIMUM_COMMENTARY_LOADING_MS = 900;
+const LOADING_PHRASE_INTERVAL_MS = 2200;
+const commentaryLoadingPhrases = [
+  "Preparing anonymized RWA facts for the agent workflow.",
+  "DataAnalystAgent is checking data-quality signals.",
+  "RiskExpertAgent is reviewing RWA drivers and validation flags.",
+  "Calling IBM watsonx.ai for stakeholder commentary synthesis.",
+  "Running guardrails before anything reaches the dashboard.",
+  "Assembling Executive Summary, CRO View, and CFO View.",
+];
 
 export function AiExecutiveCommentaryCard({
   data,
@@ -49,7 +61,8 @@ export function AiExecutiveCommentaryCard({
   const hasCalculatedRows = Boolean(data.calculatedRwaRows?.length);
   const canRegenerate = hasCalculatedRows && !isLoading;
   const viewText = commentary ? commentary[activeTab] : "";
-  const viewParagraphs = splitCommentary(viewText);
+  const commentaryBlocks = parseCommentary(viewText);
+  const loadingPhrase = useLoadingPhrase(isLoading);
 
   return (
     <Card className="briefing-card ai-commentary-card">
@@ -77,14 +90,17 @@ export function AiExecutiveCommentaryCard({
 
       <div className="ai-commentary-panel">
         {isLoading && !commentary ? (
-          <CommentaryState
-            icon={<LoaderCircle className="ai-spinner" size={16} />}
-            text="Generating AI Executive Commentary..."
-          />
+          <CommentaryStatePanel tone="loading">
+            <CommentaryState
+              caption={loadingPhrase}
+              icon={<LoaderCircle className="ai-spinner" size={16} />}
+              text="Generating AI Executive Commentary..."
+            />
+          </CommentaryStatePanel>
         ) : null}
 
         {!isLoading && error ? (
-          <>
+          <CommentaryStatePanel>
             <CommentaryState
               caption={error}
               icon={<AlertTriangle size={16} />}
@@ -98,11 +114,11 @@ export function AiExecutiveCommentaryCard({
                 onClick={onRegenerate}
               />
             </CommentaryStateActions>
-          </>
+          </CommentaryStatePanel>
         ) : null}
 
         {!isLoading && !error && !response ? (
-          <>
+          <CommentaryStatePanel>
             <CommentaryState
               icon={<Info size={16} />}
               text="AI Executive Commentary is not available for the selected inputs."
@@ -114,11 +130,11 @@ export function AiExecutiveCommentaryCard({
                 onClick={onRegenerate}
               />
             </CommentaryStateActions>
-          </>
+          </CommentaryStatePanel>
         ) : null}
 
         {!isLoading && !error && isBlocked ? (
-          <>
+          <CommentaryStatePanel>
             <CommentaryState
               icon={<AlertTriangle size={16} />}
               tone="danger"
@@ -131,7 +147,7 @@ export function AiExecutiveCommentaryCard({
                 onClick={onRegenerate}
               />
             </CommentaryStateActions>
-          </>
+          </CommentaryStatePanel>
         ) : null}
 
         {!error && commentary && !isBlocked ? (
@@ -141,11 +157,19 @@ export function AiExecutiveCommentaryCard({
             }`}
           >
             <div className="ai-commentary-copy">
-              {viewParagraphs.map((paragraph) => (
-                <p className="ai-commentary-text" key={paragraph}>
-                  {paragraph}
-                </p>
-              ))}
+              {commentaryBlocks.map((block, blockIndex) =>
+                block.kind === "list" ? (
+                  <ul className="ai-commentary-list" key={`list-${blockIndex}`}>
+                    {block.items.map((item, itemIndex) => (
+                      <li key={`${blockIndex}-${itemIndex}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="ai-commentary-text" key={`paragraph-${blockIndex}`}>
+                    {block.text}
+                  </p>
+                ),
+              )}
             </div>
             <RecommendedActions actions={commentary.recommended_actions} />
             <div className="ai-commentary-footer">
@@ -166,7 +190,7 @@ export function AiExecutiveCommentaryCard({
           <div className="ai-commentary-loading-overlay" role="status" aria-live="polite">
             <LoaderCircle className="ai-spinner" size={20} />
             <span>Generating AI Executive Commentary...</span>
-            <small>Running guarded agent workflow</small>
+            <small>{loadingPhrase}</small>
           </div>
         ) : null}
       </div>
@@ -236,6 +260,25 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   };
 
   return { error, isLoading, regenerate, response };
+}
+
+function useLoadingPhrase(isLoading: boolean) {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setPhraseIndex(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setPhraseIndex((current) => (current + 1) % commentaryLoadingPhrases.length);
+    }, LOADING_PHRASE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
+
+  return commentaryLoadingPhrases[phraseIndex];
 }
 
 export function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisRequest | null {
@@ -327,6 +370,20 @@ function CommentaryStateActions({ children }: { children: ReactNode }) {
   return <div className="ai-commentary-state-actions">{children}</div>;
 }
 
+function CommentaryStatePanel({
+  children,
+  tone = "default",
+}: {
+  children: ReactNode;
+  tone?: "default" | "loading";
+}) {
+  return (
+    <div className={`ai-commentary-state-panel ai-commentary-state-panel-${tone}`}>
+      {children}
+    </div>
+  );
+}
+
 function RegenerateButton({
   disabled,
   isLoading,
@@ -378,9 +435,48 @@ function waitForMinimumDuration(startedAt: number) {
     : Promise.resolve();
 }
 
-function splitCommentary(value: string) {
-  return value
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+function parseCommentary(value: string): CommentaryBlock[] {
+  const blocks: CommentaryBlock[] = [];
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+    blocks.push({ kind: "paragraph", text: paragraphLines.join(" ") });
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) {
+      return;
+    }
+    blocks.push({ kind: "list", items: listItems });
+    listItems = [];
+  };
+
+  value.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const bulletMatch = /^(?:[-*•]\s+|\d+[.)]\s+)/.exec(trimmed);
+    if (bulletMatch) {
+      flushParagraph();
+      listItems.push(trimmed.slice(bulletMatch[0].length).trim());
+      return;
+    }
+
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return blocks;
 }
