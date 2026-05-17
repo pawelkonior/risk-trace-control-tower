@@ -778,8 +778,15 @@ def _lineage_snapshot() -> dict[str, Any]:
 
 
 def _briefing_snapshot(generated_at: str) -> dict[str, Any]:
+    # Import here to avoid circular dependency
+    from .api import calculated_rwa_rows
+
+    # Get real calculated RWA rows for AI commentary
+    calc_rows = calculated_rwa_rows(limit=50)
+
     return {
         "generatedAt": generated_at,
+        "calculatedRwaRows": calc_rows,
         "kpis": [
             {
                 "label": "Total RWA (Current)",

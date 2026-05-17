@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { postRwaExecutiveCommentary } from "../../api/rwaApi";
 import type {
+  CalculatedRwaRow,
   RwaAnalysisRequest,
   RwaAnalysisResponse,
   RwaAnalysisStatus,
@@ -189,6 +190,47 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
 }
 
 function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisRequest {
+  // Use real calculated RWA rows if available, fallback to synthetic for backward compatibility
+  const calculatedRows = data.calculatedRwaRows ?? [];
+  
+  if (calculatedRows.length > 0) {
+    // Map real calculated rows, excluding PII-like fields
+    const rows = calculatedRows.map((row: CalculatedRwaRow) => ({
+      input: {
+        asset_id: row.asset_id,
+        asset_class: row.entity_class,
+        sector: row.sector,
+        exposure_amount: row.exposure_amount,
+        risk_weight: row.risk_weight,
+        rating: row.rating ?? undefined,
+        pd: row.pd ?? undefined,
+        lgd: row.lgd ?? undefined,
+        maturity_years: row.maturity_years ?? undefined,
+        approach: row.approach,
+      },
+      output: {
+        asset_id: row.asset_id,
+        rwa_amount: row.rwa_amount,
+        exposure_amount: row.exposure_amount,
+        risk_weight: row.risk_weight,
+        approach: row.approach,
+      },
+    }));
+
+    return {
+      request_id: `briefing-${new Date(data.generatedAt).getTime() || Date.now()}`,
+      loop_limit: 2,
+      materiality_threshold: "0.05",
+      rwa_input_data: rows.map((row: { input: RwaAnalysisRequest["rwa_input_data"][0]; output: RwaAnalysisRequest["rwa_output_results"][0] }) => row.input),
+      rwa_output_results: rows.map((row: { input: RwaAnalysisRequest["rwa_input_data"][0]; output: RwaAnalysisRequest["rwa_output_results"][0] }) => row.output),
+    };
+  }
+
+  // Fallback to synthetic data for backward compatibility
+  return buildSyntheticRequest(data);
+}
+
+function buildSyntheticRequest(data: RwaBriefingData): RwaAnalysisRequest {
   const rows = data.movementAttribution.movementDrivers.map((driver, index) => {
     const rwaAmount = Math.max(Math.abs(parseMoney(driver.impact)), 1);
     const exposureAmount = rwaAmount * 2;

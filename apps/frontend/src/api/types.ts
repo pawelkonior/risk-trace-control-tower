@@ -356,8 +356,23 @@ export type ApiBoardPack = {
   exportType: string;
 };
 
+export type CalculatedRwaRow = {
+  asset_id: string;
+  entity_class: string;
+  sector: string;
+  exposure_amount: string;
+  risk_weight: string;
+  rating?: string | null;
+  pd?: string | null;
+  lgd?: string | null;
+  maturity_years?: string | null;
+  rwa_amount: string;
+  approach: string;
+};
+
 export type BriefingSnapshot = {
   generatedAt: string;
+  calculatedRwaRows?: CalculatedRwaRow[];
   kpis: ApiBriefingKpi[];
   movementAttribution: {
     waterfallData: ApiWaterfallItem[];

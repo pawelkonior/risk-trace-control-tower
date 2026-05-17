@@ -321,3 +321,67 @@ def _format_percent(value: float) -> str:
 
 def _format_pp(value: float) -> str:
     return f"{value * 100:.2f} pp"
+
+
+def calculated_rwa_rows(as_of_date: date | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    """
+    Return anonymized calculated RWA rows for AI commentary request building.
+
+    This function extracts real calculated RWA data from the calculator results,
+    anonymizes asset IDs, and excludes PII-like fields to ensure safe data transfer
+    to the AI commentary workflow.
+
+    Args:
+        as_of_date: Calculation date (defaults to current reporting date)
+        limit: Maximum number of rows to return (default: 100)
+
+    Returns:
+        List of anonymized RWA calculation rows with required fields for commentary analysis
+    """
+    calculation_date = as_of_date or default_as_of_date()
+    current = current_rwa_snapshot(calculation_date)
+
+    if current.results.empty:
+        return []
+
+    # Select top rows by RWA amount for most impactful analysis
+    top_results = current.results.nlargest(limit, RWA_FINAL_FIELD)
+
+    rows: list[dict[str, Any]] = []
+    for idx, record in enumerate(top_results.to_dict(orient="records")):
+        # Generate anonymized asset ID
+        asset_id = f"ASSET-{str(idx + 1).padStart(3, '0')}"
+
+        # Extract required fields, excluding PII
+        pd_value = (
+            str(float(record.get("basel_3_1_pd_final", 0)))
+            if "basel_3_1_pd_final" in record
+            else None
+        )
+        lgd_value = (
+            str(float(record.get("counterparty_dlgd", 0)))
+            if "counterparty_dlgd" in record
+            else None
+        )
+        maturity_value = (
+            str(float(record.get("residual_maturity", 0)))
+            if "residual_maturity" in record
+            else None
+        )
+
+        row = {
+            "asset_id": asset_id,
+            "entity_class": str(record.get("entity_class", "UNKNOWN")),
+            "sector": str(record.get("sub_class", "UNKNOWN")),
+            "exposure_amount": str(float(record.get("exposure_amount", 0))),
+            "risk_weight": str(float(record.get("basel_3_1_rw_final", 0))),
+            "rating": str(record.get("counterparty_fcy_internal_rating", "")) or None,
+            "pd": pd_value,
+            "lgd": lgd_value,
+            "maturity_years": maturity_value,
+            "rwa_amount": str(float(record.get(RWA_FINAL_FIELD, 0))),
+            "approach": str(record.get("basel_3_1_approach_final", "standardised")),
+        }
+        rows.append(row)
+
+    return rows
