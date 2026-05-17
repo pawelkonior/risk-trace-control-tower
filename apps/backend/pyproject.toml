@@ -16,6 +16,7 @@ dependencies = [
     "langfuse>=2.0,<3.0",
     "langgraph>=0.6,<1.0",
     "llm-guard>=0.3.0,<1.0",
+    "torch>=2.0",
     "pandas>=2.2,<3.0",
     "pandera>=0.22,<1.0",
     "pydantic>=2.10,<3.0",
