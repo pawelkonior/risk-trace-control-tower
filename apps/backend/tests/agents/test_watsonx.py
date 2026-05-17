@@ -62,6 +62,22 @@ def test_watsonx_token_usage_normalizes_ibm_shapes() -> None:
     assert usage.total_tokens == 17
 
 
+def test_watsonx_parser_accepts_multiline_bullet_strings() -> None:
+    client = WatsonxClient(project_id="project-id", api_key="api-key", url="https://example.com")
+
+    commentary = client._parse_commentary_json(
+        "{"
+        '"executive_summary":"- Portfolio reviewed\n- Validation completed",'
+        '"cro_view":"- Data quality checked\n- Risk drivers assessed",'
+        '"cfo_view":"- RWA baseline confirmed\n- Reporting evidence ready"'
+        "}"
+    )
+
+    assert commentary["executive_summary"] == "- Portfolio reviewed\n- Validation completed"
+    assert commentary["cro_view"] == "- Data quality checked\n- Risk drivers assessed"
+    assert commentary["cfo_view"] == "- RWA baseline confirmed\n- Reporting evidence ready"
+
+
 def test_supervisor_uses_watsonx_when_enabled(monkeypatch) -> None:
     prompts: list[str] = []
 

@@ -749,6 +749,8 @@ def _build_worker_watsonx_prompt(
             "Do not calculate RWA formulas; Python tools already performed quantitative checks.",
             "Do not request or infer direct customer, counterparty, account, or personal data.",
             "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
+            "Each returned field must be written in English as 3-5 newline-separated bullets.",
+            "Start every bullet with '- ' and explain the agent's situation assessment.",
             "",
             "Summarized worker facts:",
             f"- generation_request_id: {request.request_id}",
@@ -764,7 +766,8 @@ def _build_worker_watsonx_prompt(
             f"- quantitative_validation_count: {len(result.quantitative_validation)}",
             f"- failed_quantitative_validation_count: {failed_validations}",
             "",
-            "Write a concise agent interpretation for the supervisor.",
+            "Write an agent interpretation for the supervisor with practical RWA "
+            "review implications.",
             "Raw portfolio rows and direct identifiers are intentionally not provided.",
         ]
     )
@@ -781,6 +784,17 @@ def _build_watsonx_prompt(
     flag_code_counts = Counter(flag.code for flag in state["validation_flags"])
     action_priorities = Counter(action.priority for action in state["recommended_actions"])
     finding_titles = [finding.title for finding in state["agent_findings"][:8]]
+    data_finding_summaries = _summarize_findings(
+        [finding for finding in state["agent_findings"] if finding.agent == "DataAnalystAgent"]
+    )
+    risk_finding_summaries = _summarize_findings(
+        [finding for finding in state["agent_findings"] if finding.agent == "RiskExpertAgent"]
+    )
+    validation_flag_summaries = _summarize_flags(state["validation_flags"])
+    recommended_action_summaries = [
+        f"{action.label} (owner: {action.owner}, priority: {action.priority})"
+        for action in state["recommended_actions"][:8]
+    ]
     total_exposure = _sum_decimal(
         record.exposure_amount for record in request.rwa_input_data if record.exposure_amount > 0
     )
@@ -797,6 +811,14 @@ def _build_watsonx_prompt(
             "Use PLN as the monetary unit for RWA and exposure amounts.",
             "Avoid unsupported value judgements; stay within supplied validation facts.",
             "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
+            "Each JSON field must be a detailed English bullet list with 4-6 bullets.",
+            "Start every bullet with '- ' and separate bullets with newline characters.",
+            "Executive summary bullets should cover portfolio size, validation posture, "
+            "agent findings, management implication, and reporting readiness.",
+            "CRO view bullets should cover data quality, risk drivers, validation flags, "
+            "controls, and required review focus.",
+            "CFO view bullets should cover RWA amount, capital/reporting implication, "
+            "action priorities, and financial governance readiness.",
             "",
             "Summarized deterministic facts:",
             f"- generation_request_id: {request.request_id}",
@@ -811,8 +833,12 @@ def _build_watsonx_prompt(
             f"- quantitative_validation_count: {len(state['quantitative_validation'])}",
             f"- failed_quantitative_validation_count: {failed_validations}",
             f"- finding_titles: {finding_titles}",
+            f"- data_finding_summaries: {data_finding_summaries}",
+            f"- risk_finding_summaries: {risk_finding_summaries}",
+            f"- validation_flag_summaries: {validation_flag_summaries}",
             f"- recommended_action_count: {len(state['recommended_actions'])}",
             f"- recommended_action_priorities: {dict(action_priorities)}",
+            f"- recommended_action_summaries: {recommended_action_summaries}",
             "",
             "Deterministic baseline commentary:",
             f"- executive_summary: {deterministic_views.executive_summary}",
@@ -829,6 +855,14 @@ def _sum_decimal(values: Iterable[Decimal]) -> Decimal:
     for value in values:
         total += value
     return total
+
+
+def _summarize_findings(findings: list[AgentFinding]) -> list[str]:
+    return [f"{finding.title}: {finding.detail}" for finding in findings[:8]]
+
+
+def _summarize_flags(flags: list[ValidationFlag]) -> list[str]:
+    return [f"{flag.code} ({flag.severity}): {flag.message}" for flag in flags[:8]]
 
 
 def _request_validation_summary(request: RwaAnalysisRequest) -> dict[str, Any]:
@@ -861,26 +895,101 @@ def _synthesize_views(
     total_rwa = sum(record.rwa_amount for record in request.rwa_output_results)
     critical_count = sum(1 for flag in flags if flag.severity == "critical")
     warning_count = sum(1 for flag in flags if flag.severity == "warning")
+    data_findings = [finding for finding in findings if finding.agent == "DataAnalystAgent"]
+    risk_findings = [finding for finding in findings if finding.agent == "RiskExpertAgent"]
     top_finding = findings[0].title if findings else "No material findings"
     action_count = len(actions)
+    failed_action_text = (
+        "No open remediation actions were generated by the agents."
+        if not actions
+        else f"{action_count} remediation actions require ownership and tracking."
+    )
+    data_signal = (
+        _humanize_finding(data_findings[0])
+        if data_findings
+        else "Data quality checks did not produce material exceptions."
+    )
+    risk_signal = (
+        _humanize_finding(risk_findings[0])
+        if risk_findings
+        else "Risk review did not identify a dominant unresolved risk exception."
+    )
+    validation_signal = (
+        "Deterministic validation completed with no critical or warning flags."
+        if critical_count == 0 and warning_count == 0
+        else (
+            f"Deterministic validation produced {critical_count} critical and "
+            f"{warning_count} warning flags."
+        )
+    )
     return CommentaryViews(
-        executive_summary=(
-            f"Submitted portfolio RWA is {total_rwa:.2f} against positive exposure "
-            f"{total_exposure:.2f}. {top_finding}. Validation produced {critical_count} "
-            f"critical and {warning_count} warning flags, with {action_count} "
-            "recommended actions."
+        executive_summary="\n".join(
+            [
+                (
+                    f"- Submitted portfolio RWA is {total_rwa:.2f} PLN against positive "
+                    f"exposure of {total_exposure:.2f} PLN."
+                ),
+                (
+                    "- The agent workflow completed its compact DataAnalystAgent and "
+                    f"RiskExpertAgent review; headline signal: {top_finding}."
+                ),
+                f"- {validation_signal}",
+                f"- {data_signal}",
+                f"- {risk_signal}",
+                f"- {failed_action_text}",
+            ]
         ),
-        cro_view=(
-            f"Risk review should focus on {critical_count} critical validation flags and "
-            f"{warning_count} warning indicators. Deterministic checks were completed before "
-            "commentary synthesis, and unresolved critical flags keep consensus open."
+        cro_view="\n".join(
+            [
+                f"- Data quality posture: {data_signal}",
+                f"- Risk driver posture: {risk_signal}",
+                f"- Validation control status: {validation_signal}",
+                (
+                    "- Quantitative RWA checks were performed by deterministic Python "
+                    "tools before narrative synthesis."
+                ),
+                (
+                    "- CRO attention should remain on unresolved critical flags before "
+                    "consensus is treated as reporting-ready."
+                    if critical_count
+                    else (
+                        "- CRO attention can focus on monitoring concentration and "
+                        "validation evidence rather than emergency remediation."
+                    )
+                ),
+            ]
         ),
-        cfo_view=(
-            f"Capital commentary is grounded in reported RWA of {total_rwa:.2f}. "
-            f"Management actions outstanding: {action_count}. Use the validation flags to "
-            "decide whether the movement is ready for executive reporting."
+        cfo_view="\n".join(
+            [
+                (
+                    f"- Financial reporting baseline uses submitted RWA of "
+                    f"{total_rwa:.2f} PLN and positive exposure of {total_exposure:.2f} PLN."
+                ),
+                f"- Management action load: {failed_action_text}",
+                (
+                    "- Capital reporting is not ready for clean executive sign-off until "
+                    "critical validation flags are resolved."
+                    if critical_count
+                    else (
+                        "- Capital reporting can proceed with the current validation "
+                        "evidence if business owners accept the documented assumptions."
+                    )
+                ),
+                (
+                    "- The commentary does not rely on LLM-native RWA calculations; "
+                    "formula validation remains deterministic and auditable."
+                ),
+                (
+                    "- CFO review should use the validation flags and agent findings to "
+                    "decide whether additional management buffer commentary is needed."
+                ),
+            ]
         ),
     )
+
+
+def _humanize_finding(finding: AgentFinding) -> str:
+    return f"{finding.title} - {finding.detail}"
 
 
 def _blocked_commentary(
