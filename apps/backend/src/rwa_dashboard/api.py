@@ -350,7 +350,7 @@ def calculated_rwa_rows(as_of_date: date | None = None, limit: int = 100) -> lis
     rows: list[dict[str, Any]] = []
     for idx, record in enumerate(top_results.to_dict(orient="records")):
         # Generate anonymized asset ID
-        asset_id = f"ASSET-{str(idx + 1).padStart(3, '0')}"
+        asset_id = f"ASSET-{str(idx + 1).zfill(3)}"
 
         # Extract required fields, excluding PII
         pd_value = (
