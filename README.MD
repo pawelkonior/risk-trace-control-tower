@@ -415,10 +415,3 @@ See `mcps/README.md` for the full workflow.
 | `docs/agents/validation.md` | Validation and guardrail guidance. |
 | `docs/RCT-*_TECHNICAL_ANALYSIS.md` | Feature-level technical analyses. |
 | `docs/RCT-*_IMPLEMENTATION_SUMMARY.md` | Implementation summaries and validation reports. |
-
-## Production Readiness Notice
-
-This repository contains synthetic/generated inputs and engineering-ready workflows. Before
-production use, calculation methodology, reference data, jurisdiction overlays, model behavior,
-rating migrations, profitability assumptions and steering recommendations must be reconciled with
-approved bank policy, binding legal text and model-risk governance.
