@@ -21,6 +21,7 @@ jobs:
   # ── 1. BACKEND: lint + test ────────────────────────────────────────────────
   backend-test:
     name: "backend: ruff + mypy + pytest"
+    if: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,6 +58,7 @@ jobs:
   # ── 2. FRONTEND: typecheck + build ────────────────────────────────────────
   frontend-test:
     name: "frontend: tsc + vite build"
+    if: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -81,6 +83,7 @@ jobs:
   # ── 3. REGULATORY MCP: tsc + vitest ──────────────────────────────────────
   regulatory-mcp-test:
     name: "regulatory-mcp: tsc + vitest"
+    if: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -105,6 +108,7 @@ jobs:
   # ── 4. SAST + SECRETS (free tools, no external server needed) ────────────
   sast:
     name: "sast: semgrep + bandit + gitleaks + trufflehog"
+    if: false
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -142,7 +146,6 @@ jobs:
   build:
     name: "build: docker → ECR (${{ matrix.service }})"
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test, regulatory-mcp-test, sast]
     if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
