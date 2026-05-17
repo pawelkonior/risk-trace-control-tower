@@ -19,8 +19,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      "sh -c 'cd ../backend && uv run uvicorn rwa_calculator.rwa_calculator.fastapi_app:app --host 127.0.0.1 --port 8000 & cd ../frontend && npm run dev -- --host 127.0.0.1 --port 5173'",
+    command: "node ./scripts/playwright-web-server.mjs",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

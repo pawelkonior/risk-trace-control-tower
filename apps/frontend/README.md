@@ -28,7 +28,8 @@ Set `VITE_RWA_API_BASE_URL` in `.env` to call a different REST API base URL.
 
 ## End-to-end tests
 
-Playwright is configured with Vite as its web server. Install browsers once, then run the suite:
+Playwright starts the backend and Vite through `scripts/playwright-web-server.mjs`. Install
+browsers once, then run the suite:
 
 ```powershell
 npm run playwright:install -- chromium

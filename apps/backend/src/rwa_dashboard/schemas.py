@@ -335,6 +335,20 @@ class BoardPack(UiSchema):
     export_type: str
 
 
+class CalculatedRwaRow(UiSchema):
+    asset_id: str
+    entity_class: str
+    sector: str
+    exposure_amount: str
+    risk_weight: str
+    rating: str | None = None
+    pd: str | None = None
+    lgd: str | None = None
+    maturity_years: str | None = None
+    rwa_amount: str
+    approach: str
+
+
 class MovementAttribution(UiSchema):
     waterfall_data: list[WaterfallPoint]
     movement_drivers: list[MovementDriver]
@@ -352,6 +366,7 @@ class ManagementReviewPack(UiSchema):
 
 class BriefingSnapshot(UiSchema):
     generated_at: datetime
+    calculated_rwa_rows: list[CalculatedRwaRow] = Field(default_factory=list)
     kpis: list[BriefingKpi]
     movement_attribution: MovementAttribution
     review_pack: ManagementReviewPack

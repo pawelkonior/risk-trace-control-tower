@@ -12,6 +12,7 @@ import type {
   ApiWaterfallItem,
   BriefingSnapshot,
   BriefingTone,
+  CalculatedRwaRow,
 } from "../api/types";
 import { hydrateIcon, type HydratedIcon } from "./iconHydration";
 import { useApiResource } from "./useApiResource";
@@ -46,6 +47,7 @@ export type ManagementReviewPack = {
 
 export type RwaBriefingData = {
   generatedAt: string;
+  calculatedRwaRows?: CalculatedRwaRow[];
   kpis: BriefingKpi[];
   movementAttribution: {
     waterfallData: ApiWaterfallItem[];
@@ -71,6 +73,7 @@ export function useRwaBriefingData() {
 function hydrateBriefingSnapshot(snapshot: BriefingSnapshot): RwaBriefingData {
   return {
     generatedAt: snapshot.generatedAt,
+    calculatedRwaRows: snapshot.calculatedRwaRows,
     kpis: snapshot.kpis.map((kpi) => ({ ...kpi, icon: hydrateIcon(kpi.icon) })),
     movementAttribution: snapshot.movementAttribution,
     reviewPack: snapshot.reviewPack,

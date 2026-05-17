@@ -113,12 +113,15 @@ class GuardrailResult(AgentSchema):
 class PromptUsage(AgentSchema):
     prompt_name: str
     prompt_version: str
-    source: Literal["local", "langfuse"]
+    source: Literal["local_fallback", "langfuse"]
+    label: str | None = None
+    fetch_status: str
+    fetch_latency_ms: float | None = Field(default=None, ge=0.0)
 
 
 class EvaluationScore(AgentSchema):
     name: str
-    value: float = Field(ge=0.0, le=1.0)
+    value: float = Field(ge=0.0)
     comment: str
 
 
