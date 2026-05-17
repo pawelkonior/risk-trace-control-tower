@@ -3086,7 +3086,7 @@ a:focus-visible,
 }
 
 .briefing-page {
-  padding: 20px 24px 16px;
+  padding: 18px 24px 16px;
 }
 
 .briefing-page .page-header {
@@ -3207,7 +3207,7 @@ a:focus-visible,
 
 .briefing-top-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
   align-items: stretch;
   gap: 16px;
   margin-top: 16px;
@@ -3234,15 +3234,14 @@ a:focus-visible,
 
 .ai-commentary-card {
   display: grid;
-  gap: 12px;
-  margin-top: 16px;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+  margin-top: 0;
 }
 
 .ai-commentary-header,
-.ai-commentary-actions,
-.ai-commentary-meta,
 .ai-commentary-tabs,
-.ai-commentary-observability,
+.ai-commentary-footer,
 .ai-actions-empty {
   display: flex;
   align-items: center;
@@ -3276,10 +3275,12 @@ a:focus-visible,
 }
 
 .ai-commentary-tabs {
-  width: fit-content;
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(106px, 1fr));
   overflow: hidden;
   border: 1px solid #dce4f1;
   border-radius: 7px;
+  background: #ffffff;
 }
 
 .ai-commentary-tabs button {
@@ -3291,6 +3292,7 @@ a:focus-visible,
   color: #31405f;
   font-size: 11px;
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .ai-commentary-tabs button:first-child {
@@ -3298,16 +3300,47 @@ a:focus-visible,
 }
 
 .ai-commentary-tabs button.active {
-  background: #0751d7;
-  color: #ffffff;
+  background: #f5f0ff;
+  color: #5b21d6;
+}
+
+.ai-commentary-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-commentary-panel {
+  min-height: 350px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #dce4f1;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.ai-commentary-content,
+.ai-commentary-copy {
+  display: grid;
+}
+
+.ai-commentary-content {
+  min-height: 312px;
+  align-content: start;
+  gap: 14px;
+}
+
+.ai-commentary-copy {
+  gap: 13px;
 }
 
 .ai-commentary-text {
   margin: 0;
   color: #07142d;
   font-size: 13px;
-  font-weight: 650;
-  line-height: 19px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .ai-commentary-grid {
@@ -3352,17 +3385,20 @@ a:focus-visible,
 
 .ai-actions-list {
   display: grid;
-  gap: 8px;
-  padding-top: 2px;
+  gap: 7px;
+  padding-top: 1px;
+}
+
+.ai-actions-list > strong {
+  color: #0a1a3a;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 15px;
 }
 
 .ai-action-row {
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  min-height: 32px;
-  padding: 7px 9px;
-  border: 1px solid #e4ebf5;
-  border-radius: 7px;
-  background: #ffffff;
+  grid-template-columns: 16px minmax(0, 1fr);
+  min-height: 18px;
 }
 
 .ai-action-row span:not(.status-badge) {
@@ -3372,12 +3408,35 @@ a:focus-visible,
   line-height: 15px;
 }
 
+.ai-action-row svg,
+.ai-actions-empty svg {
+  color: #0f9f4a;
+}
+
 .ai-actions-empty {
   gap: 8px;
   min-height: 34px;
   color: #0f8f3a;
   font-size: 12px;
   font-weight: 800;
+}
+
+.ai-commentary-footer {
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.ai-commentary-footer span {
+  color: #71809b;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 15px;
+}
+
+.ai-commentary-footer .button {
+  flex: 0 0 auto;
 }
 
 .ai-commentary-observability {
@@ -3453,6 +3512,10 @@ a:focus-visible,
 .briefing-card-header svg,
 .briefing-panel-title svg {
   color: #6b7b96;
+}
+
+.briefing-panel-title.ai-commentary-title svg {
+  color: #7c35d8;
 }
 
 .movement-card,
@@ -3547,10 +3610,10 @@ a:focus-visible,
 
 .movement-content {
   display: grid;
-  grid-template-columns: minmax(460px, 0.95fr) minmax(500px, 1.05fr);
+  grid-template-columns: minmax(320px, 1.08fr) minmax(260px, 0.92fr);
   align-items: stretch;
-  gap: 18px;
-  margin-top: 16px;
+  gap: 16px;
+  margin-top: 14px;
   flex: 1;
 }
 
@@ -3626,8 +3689,8 @@ a:focus-visible,
 }
 
 .waterfall-chart {
-  height: 400px;
-  min-height: 400px;
+  height: 340px;
+  min-height: 340px;
   padding: 8px 10px 0;
   border: 1px solid #e3ebf6;
   border-radius: 8px;
@@ -3757,11 +3820,8 @@ a:focus-visible,
 }
 
 .movement-share-cell {
-  display: grid;
-  grid-template-columns: max-content minmax(42px, 1fr);
-  gap: 8px;
-  align-items: center;
-  justify-content: end;
+  display: inline-block;
+  font-weight: 900;
 }
 
 .movement-share-cell strong {
@@ -4536,7 +4596,7 @@ a:focus-visible,
   }
 
   .movement-content {
-    grid-template-columns: minmax(430px, 0.9fr) minmax(500px, 1.1fr);
+    grid-template-columns: minmax(300px, 1.05fr) minmax(250px, 0.95fr);
   }
 
   .waterfall-panel {
@@ -4926,6 +4986,15 @@ a:focus-visible,
   .ai-commentary-tabs button {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  .ai-commentary-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ai-commentary-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .ai-commentary-grid {

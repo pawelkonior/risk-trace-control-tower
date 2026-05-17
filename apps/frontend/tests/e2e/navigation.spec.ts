@@ -37,7 +37,7 @@ test("navigates between working views and breadcrumbs", async ({ page }) => {
 
   await primaryNav.getByRole("link", { name: "RWA Intelligence Briefing" }).click();
   await expect(page).toHaveURL(/#\/briefing$/);
-  await expect(page.getByRole("heading", { level: 1, name: "RWA Intelligence Briefing" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "5. RWA Intelligence Briefing" })).toBeVisible();
   await expect(page.getByText("Total RWA (Current)")).toBeVisible();
   await page.getByRole("button", { name: "Export Board Pack" }).first().click();
   await expect(page.getByRole("status")).toContainText("Data is being processed.");
@@ -131,7 +131,9 @@ test("switches lineage and briefing controls", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Data is being processed.");
 
   await page.goto("/#/briefing");
-  await expect(page.getByRole("heading", { level: 1, name: "RWA Intelligence Briefing" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "5. RWA Intelligence Briefing" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Explain RWA Movement" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate Board Commentary" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI Executive Commentary" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Commentary views" })).toBeVisible();
@@ -140,11 +142,10 @@ test("switches lineage and briefing controls", async ({ page }) => {
   await page.getByRole("button", { name: "Regenerate" }).click();
   await expect(page.getByText("RiskTrace Intelligence").first()).toBeVisible();
 
-  const reviewTabs = page.getByRole("tablist", { name: "Review pack sections" });
-  await reviewTabs.getByRole("tab", { name: "Controls" }).click();
-  await expect(page.getByText("Control Checklist")).toBeVisible();
-  await reviewTabs.getByRole("tab", { name: "Sign-off" }).click();
-  await expect(page.getByText("Sign-off inputs")).toBeVisible();
-
+  await expect(page.getByRole("heading", { name: "Regulatory Watch" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data Quality Findings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Management Action Simulator" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Evidence & Traceability" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Board Pack" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Simulate All" })).toBeDisabled();
 });
