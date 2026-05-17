@@ -16,6 +16,7 @@ dependencies = [
     "langfuse>=2.0,<3.0",
     "langgraph>=0.6,<1.0",
     "llm-guard>=0.3.0,<1.0",
+    "torch>=2.0",
     "pandas>=2.2,<3.0",
     "pandera>=0.22,<1.0",
     "pydantic>=2.10,<3.0",
@@ -67,6 +68,14 @@ rwa_steering = ["py.typed", "generated_inputs/*"]
 
 [tool.uv]
 package = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 minversion = "8.3"
