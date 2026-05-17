@@ -172,6 +172,8 @@ class WatsonxClient:
                     "containing exactly these fields: executive_summary, cro_view, cfo_view. "
                     "Each value may be a multi-line English bullet-list string when requested. "
                     "Encode line breaks inside JSON string values as escaped \\n characters. "
+                    "Write for RWA analysts. Do not mention Python, deterministic tools, "
+                    "LLMs, prompts, guardrails, or internal workflow mechanics. "
                     "Do not include any text outside the JSON object."
                 ),
             },

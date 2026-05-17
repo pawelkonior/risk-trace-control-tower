@@ -748,9 +748,11 @@ def _build_worker_watsonx_prompt(
             "Use only summarized deterministic tool observations below.",
             "Do not calculate RWA formulas; Python tools already performed quantitative checks.",
             "Do not request or infer direct customer, counterparty, account, or personal data.",
+            "Do not mention Python, deterministic tools, LLMs, guardrails, prompts, "
+            "or workflow internals.",
             "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
             "Each returned field must be written in English as 3-5 newline-separated bullets.",
-            "Start every bullet with '- ' and explain the agent's situation assessment.",
+            "Start every bullet with '- ' and explain the RWA analyst situation assessment.",
             "",
             "Summarized worker facts:",
             f"- generation_request_id: {request.request_id}",
@@ -766,8 +768,7 @@ def _build_worker_watsonx_prompt(
             f"- quantitative_validation_count: {len(result.quantitative_validation)}",
             f"- failed_quantitative_validation_count: {failed_validations}",
             "",
-            "Write an agent interpretation for the supervisor with practical RWA "
-            "review implications.",
+            "Write an analyst-facing interpretation with practical RWA review implications.",
             "Raw portfolio rows and direct identifiers are intentionally not provided.",
         ]
     )
@@ -810,13 +811,18 @@ def _build_watsonx_prompt(
             "Do not copy deterministic baseline sentences verbatim.",
             "Use PLN as the monetary unit for RWA and exposure amounts.",
             "Avoid unsupported value judgements; stay within supplied validation facts.",
+            "Do not mention Python, deterministic tools, LLMs, prompts, guardrails, "
+            "workflow internals, or agent mechanics in the final commentary.",
+            "Write for RWA analysts and management reviewers: focus on portfolio "
+            "signals, data-quality posture, validation implications, risk drivers, "
+            "capital/reporting readiness, and follow-up review focus.",
             "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
             "Each JSON field must be a detailed English bullet list with 4-6 bullets.",
             "Start every bullet with '- ' and separate bullets with newline characters.",
             "Executive summary bullets should cover portfolio size, validation posture, "
-            "agent findings, management implication, and reporting readiness.",
+            "portfolio review findings, management implication, and reporting readiness.",
             "CRO view bullets should cover data quality, risk drivers, validation flags, "
-            "controls, and required review focus.",
+            "risk appetite implications, and required review focus.",
             "CFO view bullets should cover RWA amount, capital/reporting implication, "
             "action priorities, and financial governance readiness.",
             "",
@@ -915,11 +921,10 @@ def _synthesize_views(
         else "Risk review did not identify a dominant unresolved risk exception."
     )
     validation_signal = (
-        "Deterministic validation completed with no critical or warning flags."
+        "RWA validation completed with no critical or warning flags."
         if critical_count == 0 and warning_count == 0
         else (
-            f"Deterministic validation produced {critical_count} critical and "
-            f"{warning_count} warning flags."
+            f"RWA validation produced {critical_count} critical and {warning_count} warning flags."
         )
     )
     return CommentaryViews(
@@ -930,8 +935,8 @@ def _synthesize_views(
                     f"exposure of {total_exposure:.2f} PLN."
                 ),
                 (
-                    "- The agent workflow completed its compact DataAnalystAgent and "
-                    f"RiskExpertAgent review; headline signal: {top_finding}."
+                    "- Portfolio review is complete for the submitted dataset; "
+                    f"headline signal: {top_finding}."
                 ),
                 f"- {validation_signal}",
                 f"- {data_signal}",
@@ -943,10 +948,10 @@ def _synthesize_views(
             [
                 f"- Data quality posture: {data_signal}",
                 f"- Risk driver posture: {risk_signal}",
-                f"- Validation control status: {validation_signal}",
+                f"- Validation posture: {validation_signal}",
                 (
-                    "- Quantitative RWA checks were performed by deterministic Python "
-                    "tools before narrative synthesis."
+                    "- RWA recalculation checks support the submitted values within "
+                    "the configured materiality threshold."
                 ),
                 (
                     "- CRO attention should remain on unresolved critical flags before "
@@ -976,11 +981,11 @@ def _synthesize_views(
                     )
                 ),
                 (
-                    "- The commentary does not rely on LLM-native RWA calculations; "
-                    "formula validation remains deterministic and auditable."
+                    "- The current evidence supports an auditable RWA review trail for "
+                    "management reporting."
                 ),
                 (
-                    "- CFO review should use the validation flags and agent findings to "
+                    "- CFO review should use the validation flags and portfolio findings to "
                     "decide whether additional management buffer commentary is needed."
                 ),
             ]
