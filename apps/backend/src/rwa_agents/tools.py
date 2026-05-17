@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from .schemas import (
     AgentFinding,
@@ -13,6 +16,8 @@ from .schemas import (
     ValidationFlag,
     WorkerAnalysisResult,
 )
+
+logger = logging.getLogger(__name__)
 
 AgentName = Literal["DataAnalystAgent", "RiskExpertAgent"]
 
@@ -391,3 +396,165 @@ def _react_steps(
             observation="Worker output is structured for supervisor fan-in.",
         ),
     ]
+
+
+
+class ToolExecutor:
+    """
+    Base class for tool executors with parallel execution support.
+    
+    Tools can declare whether they can run in parallel with other tools.
+    """
+
+    def __init__(self, name: str, can_run_parallel: bool = False) -> None:
+        """
+        Initialize tool executor.
+
+        Args:
+            name: Tool name
+            can_run_parallel: Whether this tool can run in parallel with others
+        """
+        self.name = name
+        self.can_run_parallel = can_run_parallel
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        """
+        Execute the tool.
+
+        Args:
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Tool execution result
+        """
+        raise NotImplementedError("Subclasses must implement execute()")
+
+
+class DataAnalystTool(ToolExecutor):
+    """Data analyst tool executor."""
+
+    def __init__(self) -> None:
+        super().__init__(name="DataAnalystAgent", can_run_parallel=True)
+
+    def execute(self, request: RwaAnalysisRequest) -> WorkerAnalysisResult:
+        """Execute data quality analysis."""
+        return analyze_data_quality(request)
+
+
+class RiskExpertTool(ToolExecutor):
+    """Risk expert tool executor."""
+
+    def __init__(self) -> None:
+        super().__init__(name="RiskExpertAgent", can_run_parallel=True)
+
+    def execute(self, request: RwaAnalysisRequest) -> WorkerAnalysisResult:
+        """Execute risk analysis."""
+        return analyze_risk(request)
+
+
+async def execute_tools_parallel(
+    tools: list[tuple[ToolExecutor, tuple[Any, ...], dict[str, Any]]],
+) -> list[Any]:
+    """
+    Execute multiple tools in parallel if they support it.
+
+    Args:
+        tools: List of (tool, args, kwargs) tuples
+
+    Returns:
+        List of results in same order as input tools
+    """
+    if not tools:
+        return []
+
+    # Separate parallel and sequential tools
+    parallel_tools: list[tuple[int, ToolExecutor, tuple[Any, ...], dict[str, Any]]] = []
+    sequential_tools: list[tuple[int, ToolExecutor, tuple[Any, ...], dict[str, Any]]] = []
+
+    for idx, (tool, args, kwargs) in enumerate(tools):
+        if tool.can_run_parallel:
+            parallel_tools.append((idx, tool, args, kwargs))
+        else:
+            sequential_tools.append((idx, tool, args, kwargs))
+
+    results: dict[int, Any] = {}
+
+    # Execute parallel tools concurrently
+    if parallel_tools:
+        logger.info("Executing %d tools in parallel", len(parallel_tools))
+
+        async def run_tool(
+            idx: int, tool: ToolExecutor, args: tuple[Any, ...], kwargs: dict[str, Any]
+        ) -> tuple[int, Any]:
+            """Run a single tool and return its index and result."""
+            try:
+                # Run in thread pool since tools are synchronous
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, lambda: tool.execute(*args, **kwargs))
+                logger.debug("Tool %s completed successfully", tool.name)
+                return idx, result
+            except Exception as exc:
+                logger.error("Tool %s failed: %s", tool.name, exc)
+                return idx, exc
+
+        # Execute all parallel tools concurrently
+        parallel_results = await asyncio.gather(
+            *[run_tool(idx, tool, args, kwargs) for idx, tool, args, kwargs in parallel_tools],
+            return_exceptions=False,  # We handle exceptions in run_tool
+        )
+
+        # Store results by index
+        for idx, result in parallel_results:
+            results[idx] = result
+
+    # Execute sequential tools one by one
+    for idx, tool, args, kwargs in sequential_tools:
+        logger.info("Executing tool %s sequentially", tool.name)
+        try:
+            result = tool.execute(*args, **kwargs)
+            results[idx] = result
+            logger.debug("Tool %s completed successfully", tool.name)
+        except Exception as exc:
+            logger.error("Tool %s failed: %s", tool.name, exc)
+            results[idx] = exc
+
+    # Return results in original order
+    return [results[i] for i in range(len(tools))]
+
+
+def execute_tools_parallel_sync(
+    tools: list[tuple[ToolExecutor, tuple[Any, ...], dict[str, Any]]],
+) -> list[Any]:
+    """
+    Synchronous wrapper for execute_tools_parallel.
+
+    Args:
+        tools: List of (tool, args, kwargs) tuples
+
+    Returns:
+        List of results in same order as input tools
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is already running, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(execute_tools_parallel(tools))
+            finally:
+                loop.close()
+        else:
+            return loop.run_until_complete(execute_tools_parallel(tools))
+    except RuntimeError:
+        # No event loop, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(execute_tools_parallel(tools))
+        finally:
+            loop.close()
+
+
+# Made with Bob

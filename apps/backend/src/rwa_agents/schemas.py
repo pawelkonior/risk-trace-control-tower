@@ -128,6 +128,19 @@ class EvaluationScore(AgentSchema):
     comment: str
 
 
+class ErrorRecord(AgentSchema):
+    """Record of an error that occurred during workflow execution."""
+
+    error_type: str
+    error_message: str
+    node: str
+    agent: str | None = None
+    timestamp: datetime
+    retry_count: int = Field(default=0, ge=0)
+    recovered: bool = False
+    recovery_strategy: str | None = None
+
+
 class ObservabilityMetadata(AgentSchema):
     langfuse_enabled: bool = False
     trace_id: str | None = None
@@ -144,6 +157,18 @@ class ObservabilityMetadata(AgentSchema):
     llm_call_count: int = 0
     tool_call_count: int = 0
     total_token_count: int = 0
+    # Timing metrics
+    workflow_start_time: datetime | None = None
+    workflow_end_time: datetime | None = None
+    workflow_duration_ms: float | None = Field(default=None, ge=0.0)
+    node_timings: dict[str, float] = Field(default_factory=dict)
+    # Cost tracking
+    total_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    cost_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+    # Error tracking
+    errors: list[ErrorRecord] = Field(default_factory=list)
+    error_count: int = Field(default=0, ge=0)
+    recovery_count: int = Field(default=0, ge=0)
 
 
 class QuantitativeValidationItem(AgentSchema):

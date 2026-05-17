@@ -1,0 +1,535 @@
+# RWA AI Agents - Alerting Rules
+# 
+# This file defines Prometheus alerting rules for the RWA AI Agents system.
+# Based on: .bob/analysis/ai-agents-improvement-recommendations.md
+#
+# Usage:
+#   kubectl apply -f observability/agents-alerts.yaml
+#
+# Documentation: docs/agents/monitoring.md
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rwa-agents-alerts
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: alerts
+    service: rwa-agents
+data:
+  rwa-agents-alerts.yml: |
+    groups:
+      - name: rwa_agents_critical
+        interval: 30s
+        rules:
+          # ============================================================
+          # CRITICAL ALERTS - Page on-call team
+          # ============================================================
+
+          - alert: RwaAgentsHighLatency
+            expr: |
+              histogram_quantile(0.95, 
+                rate(rwa_agents_workflow_duration_ms_bucket[5m])
+              ) > 10000
+            for: 5m
+            labels:
+              severity: critical
+              team: rwa-platform
+              service: rwa-agents
+              page: "true"
+              sla: latency
+            annotations:
+              summary: "RWA Agents p95 latency exceeds 10s SLA"
+              description: |
+                The 95th percentile workflow latency is {{ $value | humanizeDuration }} (threshold: 10s).
+                This violates the latency SLA and may impact user experience.
+                
+                Current value: {{ $value | humanizeDuration }}
+                Threshold: 10s
+                Duration: 5 minutes
+              impact: "Users experiencing slow response times"
+              action: |
+                1. Check node timings in Grafana dashboard
+                2. Verify WatsonX service health
+                3. Review recent deployments
+                4. Check for cache misses
+                5. Escalate to on-call if unresolved in 15 minutes
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-latency"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-ops"
+              grafana_panel_id: "2"
+
+          - alert: RwaAgentsLowSuccessRate
+            expr: |
+              sum(rate(rwa_agents_workflow_total{status="COMPLETED"}[5m])) /
+              sum(rate(rwa_agents_workflow_total[5m])) < 0.995
+            for: 5m
+            labels:
+              severity: critical
+              team: rwa-platform
+              service: rwa-agents
+              page: "true"
+              sla: availability
+            annotations:
+              summary: "RWA Agents success rate below 99.5% SLA"
+              description: |
+                The workflow success rate is {{ $value | humanizePercentage }} (threshold: 99.5%).
+                This violates the availability SLA.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 99.5%
+                Duration: 5 minutes
+              impact: "Service availability degraded, users experiencing failures"
+              action: |
+                1. Check error logs for failure patterns
+                2. Review guardrail block rate
+                3. Verify external service health (WatsonX, LangFuse)
+                4. Check for deployment issues
+                5. Escalate to on-call immediately
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-low-success-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-ops"
+              grafana_panel_id: "1"
+
+          - alert: RwaAgentsServiceDown
+            expr: up{job="rwa-agents"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              team: rwa-platform
+              service: rwa-agents
+              page: "true"
+              sla: availability
+            annotations:
+              summary: "RWA Agents service is down"
+              description: |
+                The RWA Agents service has been unreachable for more than 1 minute.
+                All requests are failing.
+                
+                Duration: 1 minute
+              impact: "Complete service outage, all requests failing"
+              action: |
+                1. Check pod status: kubectl get pods -n rwa-agents
+                2. Check pod logs: kubectl logs -n rwa-agents -l app=rwa-agents --tail=100
+                3. Check recent deployments
+                4. Verify database connectivity
+                5. Restart service if necessary
+                6. Page on-call immediately
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-service-down"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-ops"
+
+          - alert: RwaAgentsVeryHighLatency
+            expr: |
+              histogram_quantile(0.99, 
+                rate(rwa_agents_workflow_duration_ms_bucket[5m])
+              ) > 15000
+            for: 5m
+            labels:
+              severity: critical
+              team: rwa-platform
+              service: rwa-agents
+              page: "true"
+              sla: latency
+            annotations:
+              summary: "RWA Agents p99 latency exceeds 15s"
+              description: |
+                The 99th percentile workflow latency is {{ $value | humanizeDuration }} (threshold: 15s).
+                This indicates severe performance degradation.
+                
+                Current value: {{ $value | humanizeDuration }}
+                Threshold: 15s
+                Duration: 5 minutes
+              impact: "Severe performance degradation affecting all users"
+              action: |
+                1. Check for resource exhaustion (CPU, memory)
+                2. Verify external service health
+                3. Review recent changes
+                4. Consider scaling up
+                5. Page on-call immediately
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-very-high-latency"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-perf"
+
+      - name: rwa_agents_warning
+        interval: 1m
+        rules:
+          # ============================================================
+          # WARNING ALERTS - Notify team, no page
+          # ============================================================
+
+          - alert: RwaAgentsHighGuardrailBlockRate
+            expr: |
+              sum(rate(rwa_agents_guardrail_blocked_total[5m])) /
+              sum(rate(rwa_agents_guardrail_scans_total[5m])) > 0.1
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: guardrails
+            annotations:
+              summary: "High guardrail block rate detected"
+              description: |
+                The guardrail block rate is {{ $value | humanizePercentage }} (threshold: 10%).
+                This may indicate data quality issues or misconfigured thresholds.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 10%
+                Duration: 10 minutes
+              impact: "Increased request rejections, potential data quality issues"
+              action: |
+                1. Review blocked requests in logs
+                2. Check for PII in input data
+                3. Analyze block categories
+                4. Consider adjusting guardrail thresholds
+                5. Notify data quality team
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-block-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-quality"
+              grafana_panel_id: "5"
+
+          - alert: RwaAgentsLowConsensusRate
+            expr: |
+              sum(rate(rwa_agents_consensus_reached_total[5m])) /
+              sum(rate(rwa_agents_workflow_total{status="COMPLETED"}[5m])) < 0.8
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: supervisor
+            annotations:
+              summary: "Low consensus rate in agent workflows"
+              description: |
+                The consensus rate is {{ $value | humanizePercentage }} (threshold: 80%).
+                Agents are frequently disagreeing, requiring multiple iterations.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 80%
+                Duration: 10 minutes
+              impact: "Increased latency, higher token usage, reduced quality"
+              action: |
+                1. Review agent findings for conflicts
+                2. Check loop limit reached rate
+                3. Analyze validation flags
+                4. Consider prompt tuning
+                5. Review recent data changes
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-low-consensus"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-quality"
+              grafana_panel_id: "3"
+
+          - alert: RwaAgentsCostSpike
+            expr: |
+              rate(rwa_agents_cost_usd_total[5m]) /
+              rate(rwa_agents_workflow_total[5m]) > 0.50
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: cost
+            annotations:
+              summary: "Cost per request exceeds budget"
+              description: |
+                The cost per request is ${{ $value }} (threshold: $0.50).
+                This may indicate inefficient token usage or cache issues.
+                
+                Current value: ${{ $value }}
+                Threshold: $0.50
+                Duration: 10 minutes
+              impact: "Budget overrun risk, increased operational costs"
+              action: |
+                1. Check token usage per request
+                2. Verify cache hit rate
+                3. Review prompt lengths
+                4. Check for repeated LLM calls
+                5. Consider enabling/optimizing caching
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-cost-spike"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-perf"
+              grafana_panel_id: "8"
+
+          - alert: RwaAgentsHighErrorRate
+            expr: |
+              rate(rwa_agents_error_total[5m]) /
+              rate(rwa_agents_workflow_total[5m]) > 0.05
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: reliability
+            annotations:
+              summary: "High error rate detected"
+              description: |
+                The error rate is {{ $value | humanizePercentage }} (threshold: 5%).
+                Errors are occurring more frequently than expected.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 5%
+                Duration: 10 minutes
+              impact: "Increased failures, potential service degradation"
+              action: |
+                1. Review error logs for patterns
+                2. Check error types and recovery rates
+                3. Verify external service health
+                4. Review recent deployments
+                5. Check retry configuration
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-error-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-ops"
+              grafana_panel_id: "6"
+
+          - alert: RwaAgentsLowRecoveryRate
+            expr: |
+              rate(rwa_agents_recovery_total[5m]) /
+              rate(rwa_agents_error_total[5m]) < 0.8
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: reliability
+            annotations:
+              summary: "Low error recovery rate"
+              description: |
+                The error recovery rate is {{ $value | humanizePercentage }} (threshold: 80%).
+                Retry strategies are not effectively recovering from errors.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 80%
+                Duration: 10 minutes
+              impact: "More failures reaching users, reduced reliability"
+              action: |
+                1. Review error types (transient vs. permanent)
+                2. Check retry configuration
+                3. Verify external service stability
+                4. Consider increasing retry attempts
+                5. Review recovery strategies
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-low-recovery-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-ops"
+              grafana_panel_id: "7"
+
+          - alert: RwaAgentsHighTokenUsage
+            expr: |
+              rate(rwa_agents_tokens_total[5m]) /
+              rate(rwa_agents_workflow_total[5m]) > 5000
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: cost
+            annotations:
+              summary: "Token usage per request exceeds budget"
+              description: |
+                The average token usage is {{ $value }} tokens per request (threshold: 5000).
+                This may lead to cost overruns.
+                
+                Current value: {{ $value }} tokens
+                Threshold: 5000 tokens
+                Duration: 10 minutes
+              impact: "Increased costs, potential budget overrun"
+              action: |
+                1. Check input/output token ratio
+                2. Review prompt lengths
+                3. Verify cache effectiveness
+                4. Check for unnecessary LLM calls
+                5. Consider prompt optimization
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-token-usage"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-perf"
+              grafana_panel_id: "9"
+
+          - alert: RwaAgentsHighLoopLimitRate
+            expr: |
+              rate(rwa_agents_loop_limit_reached_total[5m]) /
+              rate(rwa_agents_workflow_total[5m]) > 0.1
+            for: 10m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              component: supervisor
+            annotations:
+              summary: "High rate of workflows reaching loop limit"
+              description: |
+                {{ $value | humanizePercentage }} of workflows are reaching the loop limit (threshold: 10%).
+                Agents are unable to reach consensus within allowed iterations.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 10%
+                Duration: 10 minutes
+              impact: "Incomplete analysis, reduced quality, higher latency"
+              action: |
+                1. Review validation flags
+                2. Check agent disagreement patterns
+                3. Consider increasing loop limit
+                4. Review prompt clarity
+                5. Analyze data quality
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-loop-limit-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-quality"
+              grafana_panel_id: "4"
+
+      - name: rwa_agents_info
+        interval: 5m
+        rules:
+          # ============================================================
+          # INFO ALERTS - Informational, no immediate action required
+          # ============================================================
+
+          - alert: RwaAgentsLowCacheHitRate
+            expr: |
+              rate(rwa_agents_cache_hits_total[1h]) /
+              (rate(rwa_agents_cache_hits_total[1h]) + rate(rwa_agents_cache_misses_total[1h])) < 0.3
+            for: 1h
+            labels:
+              severity: info
+              team: rwa-platform
+              service: rwa-agents
+              component: cache
+            annotations:
+              summary: "Cache hit rate below target"
+              description: |
+                The cache hit rate is {{ $value | humanizePercentage }} (target: 30%).
+                This may indicate optimization opportunities.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Target: 30%
+                Duration: 1 hour
+              impact: "Suboptimal performance, higher costs"
+              action: |
+                1. Review cache configuration
+                2. Check cache size and TTL
+                3. Analyze query patterns
+                4. Consider increasing cache size
+                5. Review prompt normalization
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-low-cache-hit-rate"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-perf"
+              grafana_panel_id: "10"
+
+          - alert: RwaAgentsHighCriticalFindingsRate
+            expr: |
+              rate(rwa_agents_critical_findings_total[5m]) /
+              rate(rwa_agents_workflow_total[5m]) > 0.5
+            for: 30m
+            labels:
+              severity: info
+              team: rwa-platform
+              service: rwa-agents
+              component: quality
+            annotations:
+              summary: "High rate of critical findings"
+              description: |
+                {{ $value | humanizePercentage }} of workflows have critical findings (threshold: 50%).
+                This may indicate data quality issues.
+                
+                Current value: {{ $value | humanizePercentage }}
+                Threshold: 50%
+                Duration: 30 minutes
+              impact: "Potential data quality issues requiring attention"
+              action: |
+                1. Review critical findings
+                2. Check data sources
+                3. Notify data quality team
+                4. Analyze finding patterns
+                5. Consider data validation improvements
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-high-critical-findings"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-quality"
+              grafana_panel_id: "11"
+
+          - alert: RwaAgentsSlowNodeDetected
+            expr: |
+              histogram_quantile(0.95, 
+                rate(rwa_agents_node_duration_ms_bucket[5m])
+              ) by (node) > 5000
+            for: 15m
+            labels:
+              severity: info
+              team: rwa-platform
+              service: rwa-agents
+              component: performance
+            annotations:
+              summary: "Slow node detected: {{ $labels.node }}"
+              description: |
+                Node {{ $labels.node }} has p95 latency of {{ $value | humanizeDuration }} (threshold: 5s).
+                This node may benefit from optimization.
+                
+                Node: {{ $labels.node }}
+                Current value: {{ $value | humanizeDuration }}
+                Threshold: 5s
+                Duration: 15 minutes
+              impact: "Suboptimal performance for specific node"
+              action: |
+                1. Review node implementation
+                2. Check for inefficient operations
+                3. Consider caching opportunities
+                4. Analyze tool execution times
+                5. Review prompt complexity
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-slow-node"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-perf"
+              grafana_panel_id: "12"
+
+      - name: rwa_agents_sla
+        interval: 5m
+        rules:
+          # ============================================================
+          # SLA TRACKING - For error budget calculations
+          # ============================================================
+
+          - alert: RwaAgentsSLABudgetBurning
+            expr: |
+              (
+                1 - (
+                  sum(rate(rwa_agents_workflow_total{status="COMPLETED"}[1h])) /
+                  sum(rate(rwa_agents_workflow_total[1h]))
+                )
+              ) > 0.001 * 14.4
+            for: 5m
+            labels:
+              severity: warning
+              team: rwa-platform
+              service: rwa-agents
+              sla: availability
+              burn_rate: fast
+            annotations:
+              summary: "SLA error budget burning fast"
+              description: |
+                The error budget is being consumed at {{ $value | humanizePercentage }} per hour.
+                At this rate, the monthly error budget will be exhausted in {{ 720 | div $value }} hours.
+                
+                Current burn rate: {{ $value | humanizePercentage }}/hour
+                Threshold: 1.44%/hour (14.4x normal)
+                SLA target: 99.9% availability
+              impact: "Risk of SLA violation if trend continues"
+              action: |
+                1. Investigate cause of increased failures
+                2. Review recent changes
+                3. Check external dependencies
+                4. Consider rollback if necessary
+                5. Monitor error budget closely
+              runbook_url: "https://docs.example.com/runbooks/rwa-agents-sla-budget-burning"
+              dashboard_url: "https://grafana.example.com/d/rwa-agents-sla"
+
+          - record: rwa_agents:sla:availability:30d
+            expr: |
+              sum(rate(rwa_agents_workflow_total{status="COMPLETED"}[30d])) /
+              sum(rate(rwa_agents_workflow_total[30d]))
+
+          - record: rwa_agents:sla:latency_p95:5m
+            expr: |
+              histogram_quantile(0.95, 
+                rate(rwa_agents_workflow_duration_ms_bucket[5m])
+              )
+
+          - record: rwa_agents:sla:latency_p99:5m
+            expr: |
+              histogram_quantile(0.99, 
+                rate(rwa_agents_workflow_duration_ms_bucket[5m])
+              )
+
+          - record: rwa_agents:cost:per_request:5m
+            expr: |
+              rate(rwa_agents_cost_usd_total[5m]) /
+              rate(rwa_agents_workflow_total[5m])
+
+          - record: rwa_agents:tokens:per_request:5m
+            expr: |
+              rate(rwa_agents_tokens_total[5m]) /
+              rate(rwa_agents_workflow_total[5m])
+
+# Made with Bob

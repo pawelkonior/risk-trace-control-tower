@@ -179,4 +179,92 @@ class PromptRegistry:
         )
 
 
+class PromptManager:
+    """
+    Enhanced prompt manager with versioning support and caching.
+    
+    Extends PromptRegistry with additional features:
+    - Prompt version tracking in observability
+    - Enhanced caching with TTL
+    - Source tracking (langfuse vs local_fallback)
+    - Backward compatible with existing PromptRegistry
+    """
+
+    def __init__(
+        self,
+        config: LangfuseConfig | None = None,
+        cache_ttl_seconds: int = 300,
+        observability: Any | None = None,
+    ) -> None:
+        """
+        Initialize prompt manager.
+        
+        Args:
+            config: Langfuse configuration. If None, loads from environment.
+            cache_ttl_seconds: Cache TTL in seconds (default: 5 minutes)
+            observability: Optional observability service for tracking
+        """
+        self.config = config or LangfuseConfig.from_env()
+        self.cache_ttl_seconds = cache_ttl_seconds
+        self.observability = observability
+        
+        # Use existing PromptRegistry for core functionality
+        self._registry = PromptRegistry(config)
+        
+        logger.info(
+            "PromptManager initialized with cache_ttl=%ds, langfuse_enabled=%s",
+            cache_ttl_seconds,
+            self._registry.langfuse_enabled,
+        )
+
+    def get_prompt(self, prompt_name: str) -> tuple[str, PromptUsage]:
+        """
+        Get prompt by name with version tracking.
+        
+        Args:
+            prompt_name: Name of the prompt to fetch
+            
+        Returns:
+            Tuple of (prompt_text, prompt_usage_metadata)
+        """
+        # Use registry to fetch prompt
+        prompt_text, usage = self._registry.get(prompt_name)
+        
+        # Track in observability if available
+        if self.observability:
+            try:
+                self.observability.prompt(usage)
+            except Exception as exc:
+                logger.warning("Failed to track prompt in observability: %s", exc)
+        
+        # Log version information
+        logger.debug(
+            "Prompt '%s' fetched: version=%s, source=%s, status=%s",
+            prompt_name,
+            usage.prompt_version,
+            usage.source,
+            usage.fetch_status,
+        )
+        
+        return prompt_text, usage
+
+    def clear_cache(self) -> None:
+        """Clear the prompt cache."""
+        self._registry._cache.clear()
+        logger.info("Prompt cache cleared")
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """
+        Get cache statistics.
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        return {
+            "cached_prompts": len(self._registry._cache),
+            "cache_ttl_seconds": self.cache_ttl_seconds,
+            "langfuse_enabled": self._registry.langfuse_enabled,
+        }
+
+
 # Made with Bob

@@ -11,14 +11,22 @@ from langgraph.graph import END, START, StateGraph
 
 from .checkpointing import MemorySaverCheckpoint
 from .config import RwaAgentsConfig
-from .guardrails import GuardrailService
+from .guardrails import GuardrailRecovery, GuardrailService
 from .observability import LocalObservability
-from .prompts import DATA_ANALYST_PROMPT, RISK_EXPERT_PROMPT, SUPERVISOR_PROMPT, PromptRegistry
+from .prompts import (
+    DATA_ANALYST_PROMPT,
+    RISK_EXPERT_PROMPT,
+    SUPERVISOR_PROMPT,
+    PromptManager,
+    PromptRegistry,
+)
+from .retry import RetryStrategy
 from .schemas import (
     AgentFinding,
     CommentaryViews,
     FinalCommentary,
     GuardrailResult,
+    PromptUsage,
     RecommendedAction,
     RwaAnalysisRequest,
     RwaAnalysisResponse,
@@ -38,11 +46,25 @@ CHECKPOINTER = MemorySaverCheckpoint()
 def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
     config = RwaAgentsConfig.from_env()
     guardrails = GuardrailService(config.guardrails)
-    prompts = PromptRegistry(config.langfuse)
     observability = LocalObservability(request.request_id, config.langfuse)
+
+    # Initialize new resilience features
+    guardrail_recovery = GuardrailRecovery(observability)
+    retry_strategy = RetryStrategy(max_retries=3, base_delay=1.0, observability=observability)
+    prompts = PromptManager(config.langfuse, observability=observability)
+
     observability.node("RequestValidation")
     input_guardrail = guardrails.scan("request_validation", _request_validation_summary(request))
     observability.guardrail(input_guardrail)
+
+    # Try recovery if guardrail blocked
+    if input_guardrail.blocked and guardrail_recovery.should_retry(
+        input_guardrail.risk_score, input_guardrail.categories
+    ):
+        logger.info("Attempting guardrail recovery for request validation")
+        # For now, still block but track the recovery attempt
+        guardrail_recovery.reset_attempts()
+
     if input_guardrail.blocked:
         final = _blocked_commentary(request, observability, ["Input guardrail blocked request."])
         observability.finalize()
@@ -84,252 +106,289 @@ def _build_graph(
     request: RwaAnalysisRequest,
     config: RwaAgentsConfig,
     guardrails: GuardrailService,
-    prompts: PromptRegistry,
+    prompts: PromptManager | PromptRegistry,
     observability: LocalObservability,
 ) -> Any:
+    # Initialize resilience features for use in graph nodes
+    guardrail_recovery = GuardrailRecovery(observability)
+    retry_strategy = RetryStrategy(max_retries=3, base_delay=1.0, observability=observability)
+
+    # Helper to get prompts from either PromptManager or PromptRegistry
+    def get_prompt(name: str) -> tuple[str, PromptUsage]:
+        if hasattr(prompts, 'get_prompt'):
+            return prompts.get_prompt(name)  # type: ignore
+        return prompts.get(name)  # type: ignore
+
     builder = StateGraph(AgentState)
 
     def analysis_phase(state: AgentState) -> dict:
         observability.node("AnalysisPhase")
-        data_prompt, data_usage = prompts.get(DATA_ANALYST_PROMPT)
-        risk_prompt, risk_usage = prompts.get(RISK_EXPERT_PROMPT)
-        observability.prompt(data_usage)
-        observability.prompt(risk_usage)
-        guardrail_results = []
-        guardrail_blocked = False
-        for stage, prompt in (
-            ("data_analyst_prompt", data_prompt),
-            ("risk_expert_prompt", risk_prompt),
-        ):
-            result = guardrails.scan(stage, prompt)
-            observability.guardrail(result)
-            guardrail_results.append(result)
-            guardrail_blocked = guardrail_blocked or result.blocked
+        try:
+            data_prompt, data_usage = get_prompt(DATA_ANALYST_PROMPT)
+            risk_prompt, risk_usage = get_prompt(RISK_EXPERT_PROMPT)
+            observability.prompt(data_usage)
+            observability.prompt(risk_usage)
+            guardrail_results = []
+            guardrail_blocked = False
+            for stage, prompt in (
+                ("data_analyst_prompt", data_prompt),
+                ("risk_expert_prompt", risk_prompt),
+            ):
+                result = guardrails.scan(stage, prompt)
+                observability.guardrail(result)
+                guardrail_results.append(result)
+                guardrail_blocked = guardrail_blocked or result.blocked
 
-        return {
-            "agent_findings": [],
-            "validation_flags": [],
-            "recommended_actions": [],
-            "quantitative_validation": [],
-            "data_agent_result": None,
-            "risk_agent_result": None,
-            "guardrail_results": [*state["guardrail_results"], *guardrail_results],
-            "guardrail_blocked": guardrail_blocked,
-            "loop_count": state["loop_count"] + 1,
-            "next_agent": None,
-        }
+            return {
+                "agent_findings": [],
+                "validation_flags": [],
+                "recommended_actions": [],
+                "quantitative_validation": [],
+                "data_agent_result": None,
+                "risk_agent_result": None,
+                "guardrail_results": [*state["guardrail_results"], *guardrail_results],
+                "guardrail_blocked": guardrail_blocked,
+                "loop_count": state["loop_count"] + 1,
+                "next_agent": None,
+            }
+        finally:
+            observability.node_complete("AnalysisPhase")
 
     def data_analyst_agent(_state: AgentState) -> dict:
         observability.node("DataAnalystAgent")
-        observability.tool("DataTools")
-        result = analyze_data_quality(request)
-        result = _maybe_enrich_worker_with_watsonx(
-            request=request,
-            result=result,
-            config=config,
-            guardrails=guardrails,
-            observability=observability,
-        )
-        return {"data_agent_result": result}
-
-    def risk_expert_agent(_state: AgentState) -> dict:
-        observability.node("RiskExpertAgent")
-        observability.tool("RiskTools")
-        result = analyze_risk(request)
-        result = _maybe_enrich_worker_with_watsonx(
-            request=request,
-            result=result,
-            config=config,
-            guardrails=guardrails,
-            observability=observability,
-        )
-        return {"risk_agent_result": result}
-
-    def analysis_fan_in(state: AgentState) -> dict:
-        observability.node("AnalysisFanIn")
-        data_result = state["data_agent_result"] or WorkerAnalysisResult(agent="DataAnalystAgent")
-        risk_result = state["risk_agent_result"] or WorkerAnalysisResult(agent="RiskExpertAgent")
-        worker_payload = {
-            "data": data_result,
-            "risk": risk_result,
-        }
-        worker_guardrail = guardrails.scan("worker_outputs", worker_payload)
-        observability.guardrail(worker_guardrail)
-        worker_guardrail_results = [
-            *data_result.guardrail_results,
-            *risk_result.guardrail_results,
-            worker_guardrail,
-        ]
-        worker_messages = [
-            *state["messages"],
-            *data_result.messages,
-            *risk_result.messages,
-        ]
-        worker_llm_call_count = (
-            state["llm_call_count"] + data_result.llm_call_count + risk_result.llm_call_count
-        )
-        worker_token_count = (
-            state["total_token_count"]
-            + data_result.total_token_count
-            + risk_result.total_token_count
-        )
-        if (
-            worker_guardrail.blocked
-            or data_result.guardrail_blocked
-            or risk_result.guardrail_blocked
-        ):
-            return {
-                "messages": worker_messages,
-                "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
-                "guardrail_blocked": True,
-                "llm_call_count": worker_llm_call_count,
-                "total_token_count": worker_token_count,
-            }
-        return {
-            "messages": [*worker_messages, "Parallel LangGraph worker analysis completed."],
-            "agent_findings": [*data_result.findings, *risk_result.findings],
-            "validation_flags": [
-                *data_result.validation_flags,
-                *risk_result.validation_flags,
-            ],
-            "recommended_actions": [
-                *data_result.recommended_actions,
-                *risk_result.recommended_actions,
-            ],
-            "quantitative_validation": risk_result.quantitative_validation,
-            "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
-            "llm_call_count": worker_llm_call_count,
-            "total_token_count": worker_token_count,
-        }
-
-    def supervisor_agent(state: AgentState) -> dict:
-        observability.node("SupervisorAgent")
-        supervisor_prompt, supervisor_usage = prompts.get(SUPERVISOR_PROMPT)
-        observability.prompt(supervisor_usage)
-        supervisor_guardrail = guardrails.scan("supervisor_prompt", supervisor_prompt)
-        observability.guardrail(supervisor_guardrail)
-        if supervisor_guardrail.blocked or state["guardrail_blocked"]:
-            return {
-                "guardrail_results": [*state["guardrail_results"], supervisor_guardrail],
-                "guardrail_blocked": True,
-                "next_agent": "GuardrailBlocked",
-            }
-        critical_flags = [flag for flag in state["validation_flags"] if flag.severity == "critical"]
-        data_complete = any(
-            finding.agent == "DataAnalystAgent" for finding in state["agent_findings"]
-        ) or any(flag.source_agent == "DataAnalystAgent" for flag in state["validation_flags"])
-        risk_complete = bool(state["quantitative_validation"]) or any(
-            finding.agent == "RiskExpertAgent" for finding in state["agent_findings"]
-        )
-        consensus_reached = data_complete and risk_complete and not critical_flags
-        views = _synthesize_views(
-            request=request,
-            findings=state["agent_findings"],
-            flags=state["validation_flags"],
-            actions=state["recommended_actions"],
-        )
-        should_loop = not consensus_reached and state["loop_count"] < state["loop_limit"]
-        guardrail_results = [*state["guardrail_results"], supervisor_guardrail]
-        messages = state["messages"]
-        llm_call_count = state["llm_call_count"]
-        total_token_count = state["total_token_count"]
-
-        if not should_loop:
-            llm_result = _maybe_synthesize_with_watsonx(
+        try:
+            observability.tool("DataTools")
+            result = analyze_data_quality(request)
+            result = _maybe_enrich_worker_with_watsonx(
                 request=request,
-                state=state,
-                deterministic_views=views,
-                consensus_reached=consensus_reached,
+                result=result,
                 config=config,
                 guardrails=guardrails,
                 observability=observability,
+                retry_strategy=retry_strategy,
             )
-            views = llm_result.views
-            guardrail_results = [*guardrail_results, *llm_result.guardrail_results]
-            messages = [*messages, *llm_result.messages]
-            llm_call_count = llm_result.llm_call_count
-            total_token_count = llm_result.total_token_count
-            if llm_result.blocked:
+            return {"data_agent_result": result}
+        finally:
+            observability.node_complete("DataAnalystAgent")
+
+    def risk_expert_agent(_state: AgentState) -> dict:
+        observability.node("RiskExpertAgent")
+        try:
+            observability.tool("RiskTools")
+            result = analyze_risk(request)
+            result = _maybe_enrich_worker_with_watsonx(
+                request=request,
+                result=result,
+                config=config,
+                guardrails=guardrails,
+                observability=observability,
+                retry_strategy=retry_strategy,
+            )
+            return {"risk_agent_result": result}
+        finally:
+            observability.node_complete("RiskExpertAgent")
+
+    def analysis_fan_in(state: AgentState) -> dict:
+        observability.node("AnalysisFanIn")
+        try:
+            data_result = state["data_agent_result"] or WorkerAnalysisResult(agent="DataAnalystAgent")
+            risk_result = state["risk_agent_result"] or WorkerAnalysisResult(agent="RiskExpertAgent")
+            worker_payload = {
+                "data": data_result,
+                "risk": risk_result,
+            }
+            worker_guardrail = guardrails.scan("worker_outputs", worker_payload)
+            observability.guardrail(worker_guardrail)
+            worker_guardrail_results = [
+                *data_result.guardrail_results,
+                *risk_result.guardrail_results,
+                worker_guardrail,
+            ]
+            worker_messages = [
+                *state["messages"],
+                *data_result.messages,
+                *risk_result.messages,
+            ]
+            worker_llm_call_count = (
+                state["llm_call_count"] + data_result.llm_call_count + risk_result.llm_call_count
+            )
+            worker_token_count = (
+                state["total_token_count"]
+                + data_result.total_token_count
+                + risk_result.total_token_count
+            )
+            if (
+                worker_guardrail.blocked
+                or data_result.guardrail_blocked
+                or risk_result.guardrail_blocked
+            ):
                 return {
-                    "guardrail_results": guardrail_results,
+                    "messages": worker_messages,
+                    "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
                     "guardrail_blocked": True,
-                    "llm_call_count": llm_call_count,
-                    "total_token_count": total_token_count,
+                    "llm_call_count": worker_llm_call_count,
+                    "total_token_count": worker_token_count,
+                }
+            return {
+                "messages": [*worker_messages, "Parallel LangGraph worker analysis completed."],
+                "agent_findings": [*data_result.findings, *risk_result.findings],
+                "validation_flags": [
+                    *data_result.validation_flags,
+                    *risk_result.validation_flags,
+                ],
+                "recommended_actions": [
+                    *data_result.recommended_actions,
+                    *risk_result.recommended_actions,
+                ],
+                "quantitative_validation": risk_result.quantitative_validation,
+                "guardrail_results": [*state["guardrail_results"], *worker_guardrail_results],
+                "llm_call_count": worker_llm_call_count,
+                "total_token_count": worker_token_count,
+            }
+        finally:
+            observability.node_complete("AnalysisFanIn")
+
+    def supervisor_agent(state: AgentState) -> dict:
+        observability.node("SupervisorAgent")
+        try:
+            supervisor_prompt, supervisor_usage = get_prompt(SUPERVISOR_PROMPT)
+            observability.prompt(supervisor_usage)
+            supervisor_guardrail = guardrails.scan("supervisor_prompt", supervisor_prompt)
+            observability.guardrail(supervisor_guardrail)
+            if supervisor_guardrail.blocked or state["guardrail_blocked"]:
+                return {
+                    "guardrail_results": [*state["guardrail_results"], supervisor_guardrail],
+                    "guardrail_blocked": True,
                     "next_agent": "GuardrailBlocked",
                 }
+            critical_flags = [flag for flag in state["validation_flags"] if flag.severity == "critical"]
+            data_complete = any(
+                finding.agent == "DataAnalystAgent" for finding in state["agent_findings"]
+            ) or any(flag.source_agent == "DataAnalystAgent" for flag in state["validation_flags"])
+            risk_complete = bool(state["quantitative_validation"]) or any(
+                finding.agent == "RiskExpertAgent" for finding in state["agent_findings"]
+            )
+            consensus_reached = data_complete and risk_complete and not critical_flags
+            views = _synthesize_views(
+                request=request,
+                findings=state["agent_findings"],
+                flags=state["validation_flags"],
+                actions=state["recommended_actions"],
+            )
+            should_loop = not consensus_reached and state["loop_count"] < state["loop_limit"]
+            guardrail_results = [*state["guardrail_results"], supervisor_guardrail]
+            messages = state["messages"]
+            llm_call_count = state["llm_call_count"]
+            total_token_count = state["total_token_count"]
 
-        return {
-            "commentary_views": views,
-            "consensus_reached": consensus_reached,
-            "messages": messages,
-            "guardrail_results": guardrail_results,
-            "llm_call_count": llm_call_count,
-            "total_token_count": total_token_count,
-            "next_agent": "AnalysisPhase" if should_loop else "FinalOutputGuard",
-        }
+            if not should_loop:
+                llm_result = _maybe_synthesize_with_watsonx(
+                    request=request,
+                    state=state,
+                    deterministic_views=views,
+                    consensus_reached=consensus_reached,
+                    config=config,
+                    guardrails=guardrails,
+                    observability=observability,
+                    retry_strategy=retry_strategy,
+                )
+                views = llm_result.views
+                guardrail_results = [*guardrail_results, *llm_result.guardrail_results]
+                messages = [*messages, *llm_result.messages]
+                llm_call_count = llm_result.llm_call_count
+                total_token_count = llm_result.total_token_count
+                if llm_result.blocked:
+                    return {
+                        "guardrail_results": guardrail_results,
+                        "guardrail_blocked": True,
+                        "llm_call_count": llm_call_count,
+                        "total_token_count": total_token_count,
+                        "next_agent": "GuardrailBlocked",
+                    }
+
+            return {
+                "commentary_views": views,
+                "consensus_reached": consensus_reached,
+                "messages": messages,
+                "guardrail_results": guardrail_results,
+                "llm_call_count": llm_call_count,
+                "total_token_count": total_token_count,
+                "next_agent": "AnalysisPhase" if should_loop else "FinalOutputGuard",
+            }
+        finally:
+            observability.node_complete("SupervisorAgent")
 
     def final_output_guard(state: AgentState) -> dict:
         observability.node("FinalOutputGuard")
-        status = "COMPLETED" if state["consensus_reached"] else "LOOP_LIMIT_REACHED"
-        views = state["commentary_views"]
-        final = FinalCommentary(
-            status=status,
-            consensus_reached=state["consensus_reached"],
-            loop_count=state["loop_count"],
-            executive_summary=views.executive_summary,
-            cro_view=views.cro_view,
-            cfo_view=views.cfo_view,
-            data_quality_observations=[
-                finding for finding in state["agent_findings"] if finding.kind == "data_quality"
-            ],
-            risk_observations=[
-                finding
-                for finding in state["agent_findings"]
-                if finding.kind in {"risk", "validation"}
-            ],
-            quantitative_validation=state["quantitative_validation"],
-            recommended_actions=state["recommended_actions"],
-            validation_flags=state["validation_flags"],
-            source_agents=sorted({finding.agent for finding in state["agent_findings"]}),
-            messages=state["messages"],
-        )
-        final_guardrail = guardrails.scan("final_output", final)
-        observability.guardrail(final_guardrail)
-        if final_guardrail.blocked:
+        try:
+            status = "COMPLETED" if state["consensus_reached"] else "LOOP_LIMIT_REACHED"
+            views = state["commentary_views"]
+            final = FinalCommentary(
+                status=status,
+                consensus_reached=state["consensus_reached"],
+                loop_count=state["loop_count"],
+                executive_summary=views.executive_summary,
+                cro_view=views.cro_view,
+                cfo_view=views.cfo_view,
+                data_quality_observations=[
+                    finding for finding in state["agent_findings"] if finding.kind == "data_quality"
+                ],
+                risk_observations=[
+                    finding
+                    for finding in state["agent_findings"]
+                    if finding.kind in {"risk", "validation"}
+                ],
+                quantitative_validation=state["quantitative_validation"],
+                recommended_actions=state["recommended_actions"],
+                validation_flags=state["validation_flags"],
+                source_agents=sorted({finding.agent for finding in state["agent_findings"]}),
+                messages=state["messages"],
+            )
+            final_guardrail = guardrails.scan("final_output", final)
+            observability.guardrail(final_guardrail)
+            if final_guardrail.blocked:
+                return {
+                    "guardrail_results": [*state["guardrail_results"], final_guardrail],
+                    "guardrail_blocked": True,
+                    "next_agent": "GuardrailBlocked",
+                }
+            observability.metadata.llm_call_count = state["llm_call_count"]
+            observability.metadata.total_token_count = state["total_token_count"]
+            # Compute all required evaluation scores
+            observability.compute_final_scores(dict(state))
+            final.observability = observability.metadata
             return {
+                "final_commentary": final,
                 "guardrail_results": [*state["guardrail_results"], final_guardrail],
-                "guardrail_blocked": True,
-                "next_agent": "GuardrailBlocked",
+                "next_agent": "FinalStructuredResponse",
             }
-        observability.metadata.llm_call_count = state["llm_call_count"]
-        observability.metadata.total_token_count = state["total_token_count"]
-        # Compute all required evaluation scores
-        observability.compute_final_scores(dict(state))
-        final.observability = observability.metadata
-        return {
-            "final_commentary": final,
-            "guardrail_results": [*state["guardrail_results"], final_guardrail],
-            "next_agent": "FinalStructuredResponse",
-        }
+        finally:
+            observability.node_complete("FinalOutputGuard")
 
     def guardrail_blocked(_state: AgentState) -> dict:
         observability.node("GuardrailBlocked")
-        observability.metadata.llm_call_count = _state["llm_call_count"]
-        observability.metadata.total_token_count = _state["total_token_count"]
-        final = _blocked_commentary(
-            request,
-            observability,
-            ["Guardrail blocked unsafe workflow output."],
-        )
-        return {
-            "final_commentary": final,
-            "guardrail_blocked": True,
-            "next_agent": "FinalStructuredResponse",
-        }
+        try:
+            observability.metadata.llm_call_count = _state["llm_call_count"]
+            observability.metadata.total_token_count = _state["total_token_count"]
+            final = _blocked_commentary(
+                request,
+                observability,
+                ["Guardrail blocked unsafe workflow output."],
+            )
+            return {
+                "final_commentary": final,
+                "guardrail_blocked": True,
+                "next_agent": "FinalStructuredResponse",
+            }
+        finally:
+            observability.node_complete("GuardrailBlocked")
 
     def final_structured_response(_state: AgentState) -> dict:
         observability.node("FinalStructuredResponse")
-        return {}
+        try:
+            return {}
+        finally:
+            observability.node_complete("FinalStructuredResponse")
 
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -389,6 +448,7 @@ def _maybe_enrich_worker_with_watsonx(
     config: RwaAgentsConfig,
     guardrails: GuardrailService,
     observability: LocalObservability,
+    retry_strategy: RetryStrategy | None = None,
 ) -> WorkerAnalysisResult:
     if not config.uses_watsonx:
         return result
@@ -415,8 +475,16 @@ def _maybe_enrich_worker_with_watsonx(
             }
         )
 
+    # Use retry strategy for watsonx calls if available
     try:
-        watsonx_response = _new_watsonx_client(config).chat(prompt)
+        if retry_strategy:
+            watsonx_response = retry_strategy.retry_with_backoff(
+                lambda: _new_watsonx_client(config).chat(prompt),
+                node=f"{result.agent}_watsonx",
+                agent=result.agent,
+            )
+        else:
+            watsonx_response = _new_watsonx_client(config).chat(prompt)
     except WatsonxResponseError as exc:
         token_count = _record_worker_failed_watsonx_response(
             config=config,
@@ -517,6 +585,7 @@ def _maybe_synthesize_with_watsonx(
     config: RwaAgentsConfig,
     guardrails: GuardrailService,
     observability: LocalObservability,
+    retry_strategy: RetryStrategy | None = None,
 ) -> LlmSynthesisResult:
     if not config.uses_watsonx:
         return LlmSynthesisResult(
@@ -559,8 +628,16 @@ def _maybe_synthesize_with_watsonx(
             messages=[],
         )
 
+    # Use retry strategy for watsonx calls if available
     try:
-        watsonx_response = _new_watsonx_client(config).chat(prompt)
+        if retry_strategy:
+            watsonx_response = retry_strategy.retry_with_backoff(
+                lambda: _new_watsonx_client(config).chat(prompt),
+                node="SupervisorAgent_watsonx",
+                agent="SupervisorAgent",
+            )
+        else:
+            watsonx_response = _new_watsonx_client(config).chat(prompt)
     except WatsonxResponseError as exc:
         llm_call_count, total_token_count = _record_failed_watsonx_response(
             state=state,
@@ -677,10 +754,14 @@ def _record_successful_worker_watsonx_response(
     response: WatsonxResponse,
 ) -> int:
     token_count = response.token_usage.total_tokens
+    input_tokens = response.token_usage.input_tokens
+    output_tokens = response.token_usage.generated_tokens
     observability.llm(
         provider="watsonx",
         model_id=config.watsonx.watsonx_model_id,
         token_count=token_count,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
     return token_count
 
@@ -692,10 +773,14 @@ def _record_worker_failed_watsonx_response(
     error: WatsonxResponseError,
 ) -> int:
     token_count = error.token_usage.total_tokens if error.token_usage is not None else 0
+    input_tokens = error.token_usage.input_tokens if error.token_usage is not None else 0
+    output_tokens = error.token_usage.generated_tokens if error.token_usage is not None else 0
     observability.llm(
         provider="watsonx",
         model_id=config.watsonx.watsonx_model_id,
         token_count=token_count,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
     return token_count
 
@@ -708,10 +793,14 @@ def _record_successful_watsonx_response(
     response: WatsonxResponse,
 ) -> tuple[int, int]:
     token_count = response.token_usage.total_tokens
+    input_tokens = response.token_usage.input_tokens
+    output_tokens = response.token_usage.generated_tokens
     observability.llm(
         provider="watsonx",
         model_id=config.watsonx.watsonx_model_id,
         token_count=token_count,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
     return state["llm_call_count"] + 1, state["total_token_count"] + token_count
 
@@ -724,10 +813,14 @@ def _record_failed_watsonx_response(
     error: WatsonxResponseError,
 ) -> tuple[int, int]:
     token_count = error.token_usage.total_tokens if error.token_usage is not None else 0
+    input_tokens = error.token_usage.input_tokens if error.token_usage is not None else 0
+    output_tokens = error.token_usage.generated_tokens if error.token_usage is not None else 0
     observability.llm(
         provider="watsonx",
         model_id=config.watsonx.watsonx_model_id,
         token_count=token_count,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
     return state["llm_call_count"] + 1, state["total_token_count"] + token_count
 

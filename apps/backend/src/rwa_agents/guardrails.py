@@ -406,4 +406,173 @@ class GuardrailService:
                         self._extract_text_from_dict(item, texts)
 
 
+class GuardrailRecovery:
+    """
+    Guardrail recovery mechanisms for handling blocked content.
+    
+    Provides sanitization and recovery strategies when guardrails detect
+    issues, allowing workflows to continue with cleaned content when safe.
+    """
+
+    def __init__(self, observability: Any | None = None) -> None:
+        """
+        Initialize guardrail recovery service.
+        
+        Args:
+            observability: Optional observability service for tracking recovery attempts
+        """
+        self.observability = observability
+        self._recovery_attempts = 0
+
+    def handle_pii_detection(self, content: str, categories: list[str]) -> str:
+        """
+        Sanitize content containing PII by redacting sensitive information.
+        
+        Args:
+            content: Content containing PII
+            categories: List of PII categories detected
+            
+        Returns:
+            Sanitized content with PII redacted
+        """
+        self._recovery_attempts += 1
+        sanitized = content
+
+        # Redact email addresses
+        if "pii" in categories or "EMAIL_ADDRESS" in categories:
+            import re
+            sanitized = re.sub(
+                r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+                '[EMAIL_REDACTED]',
+                sanitized
+            )
+
+        # Redact phone numbers
+        if "pii" in categories or "PHONE_NUMBER" in categories:
+            import re
+            sanitized = re.sub(
+                r'\b(?:\+?\d{1,3}[-.\s])?(?:\(?\d{3}\)?[-.\s])\d{3}[-.\s]\d{4}\b',
+                '[PHONE_REDACTED]',
+                sanitized
+            )
+
+        # Redact credit card numbers
+        if "pii" in categories or "CREDIT_CARD" in categories:
+            import re
+            sanitized = re.sub(
+                r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+                '[CARD_REDACTED]',
+                sanitized
+            )
+
+        logger.info(
+            "PII sanitization applied (attempt %d): %d characters redacted",
+            self._recovery_attempts,
+            len(content) - len(sanitized) + sanitized.count('[') * 10,
+        )
+
+        if self.observability:
+            try:
+                self.observability.record_error(
+                    error=Exception("PII detected and sanitized"),
+                    node="GuardrailRecovery",
+                    recovered=True,
+                    recovery_strategy="pii_sanitization",
+                )
+            except Exception:
+                pass
+
+        return sanitized
+
+    def handle_prompt_injection(self, content: str) -> str:
+        """
+        Escape prompt injection patterns to neutralize attacks.
+        
+        Args:
+            content: Content with potential prompt injection
+            
+        Returns:
+            Content with injection patterns escaped
+        """
+        self._recovery_attempts += 1
+
+        # Escape common injection patterns
+        escaped = content
+        injection_patterns = [
+            ("ignore previous instructions", "[INSTRUCTION_ESCAPED]"),
+            ("disregard all", "[INSTRUCTION_ESCAPED]"),
+            ("forget everything", "[INSTRUCTION_ESCAPED]"),
+            ("new instructions:", "[INSTRUCTION_ESCAPED]"),
+            ("system:", "[SYSTEM_ESCAPED]"),
+            ("assistant:", "[ASSISTANT_ESCAPED]"),
+        ]
+
+        for pattern, replacement in injection_patterns:
+            escaped = escaped.replace(pattern, replacement)
+            escaped = escaped.replace(pattern.upper(), replacement)
+            escaped = escaped.replace(pattern.title(), replacement)
+
+        logger.info(
+            "Prompt injection escaping applied (attempt %d)",
+            self._recovery_attempts,
+        )
+
+        if self.observability:
+            try:
+                self.observability.record_error(
+                    error=Exception("Prompt injection detected and escaped"),
+                    node="GuardrailRecovery",
+                    recovered=True,
+                    recovery_strategy="injection_escaping",
+                )
+            except Exception:
+                pass
+
+        return escaped
+
+    def should_retry(self, risk_score: float, categories: list[str]) -> bool:
+        """
+        Determine if retry is possible based on risk score and categories.
+        
+        Args:
+            risk_score: Risk score from guardrail scan (0.0 to 1.0)
+            categories: List of issue categories detected
+            
+        Returns:
+            True if retry with recovery is recommended, False otherwise
+        """
+        # Don't retry if risk is too high
+        if risk_score >= 0.9:
+            logger.warning("Risk score %.2f too high for recovery retry", risk_score)
+            return False
+
+        # Don't retry if too many attempts already
+        if self._recovery_attempts >= 3:
+            logger.warning("Maximum recovery attempts (%d) reached", self._recovery_attempts)
+            return False
+
+        # Retry for PII and prompt injection if risk is moderate
+        recoverable_categories = {"pii", "prompt_injection", "EMAIL_ADDRESS", "PHONE_NUMBER"}
+        has_recoverable = any(cat in recoverable_categories for cat in categories)
+
+        if has_recoverable and risk_score < 0.85:
+            logger.info(
+                "Recovery retry recommended for categories %s (risk: %.2f)",
+                categories,
+                risk_score,
+            )
+            return True
+
+        logger.info(
+            "Recovery retry not recommended for categories %s (risk: %.2f)",
+            categories,
+            risk_score,
+        )
+        return False
+
+    def reset_attempts(self) -> None:
+        """Reset recovery attempt counter."""
+        self._recovery_attempts = 0
+
+
 # Made with Bob

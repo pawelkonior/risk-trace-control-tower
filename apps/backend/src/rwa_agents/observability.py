@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import logging
+import time
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 from .config import LangfuseConfig
-from .schemas import EvaluationScore, GuardrailResult, ObservabilityMetadata, PromptUsage
+from .schemas import ErrorRecord, EvaluationScore, GuardrailResult, ObservabilityMetadata, PromptUsage
 
 logger = logging.getLogger(__name__)
+
+# WatsonX pricing per 1K tokens (approximate, adjust based on actual pricing)
+WATSONX_INPUT_COST_PER_1K = Decimal("0.0002")  # $0.0002 per 1K input tokens
+WATSONX_OUTPUT_COST_PER_1K = Decimal("0.0006")  # $0.0006 per 1K output tokens
 
 
 class LocalObservability:
@@ -31,12 +38,14 @@ class LocalObservability:
         self.request_id = request_id
         self._client: Any = None
         self._trace: Any = None
+        self._node_start_times: dict[str, float] = {}
 
         self.metadata = ObservabilityMetadata(
             langfuse_enabled=self.langfuse_enabled,
             trace_id=f"trace-{uuid4().hex[:12]}" if self.langfuse_enabled else None,
             callback_handler_attached=False,
             thread_id=request_id,
+            workflow_start_time=datetime.now(UTC),
         )
 
         if self.langfuse_enabled:
@@ -84,12 +93,13 @@ class LocalObservability:
 
     def node(self, name: str) -> None:
         """
-        Record node transition.
+        Record node transition and start timing.
 
         Args:
             name: Node name
         """
         self.metadata.node_transition_count += 1
+        self._node_start_times[name] = time.perf_counter()
 
         if self.langfuse_enabled and self._trace:
             try:
@@ -99,6 +109,20 @@ class LocalObservability:
                 )
             except Exception as exc:
                 logger.warning("Failed to record node span in Langfuse: %s", exc)
+
+    def node_complete(self, name: str) -> None:
+        """
+        Record node completion and calculate duration.
+
+        Args:
+            name: Node name
+        """
+        if name in self._node_start_times:
+            start_time = self._node_start_times[name]
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            self.metadata.node_timings[name] = duration_ms
+            del self._node_start_times[name]
+            logger.debug("Node %s completed in %.2fms", name, duration_ms)
 
     def tool(self, name: str) -> None:
         """
@@ -118,17 +142,46 @@ class LocalObservability:
             except Exception as exc:
                 logger.warning("Failed to record tool span in Langfuse: %s", exc)
 
-    def llm(self, *, provider: str, model_id: str, token_count: int) -> None:
+    def llm(
+        self,
+        *,
+        provider: str,
+        model_id: str,
+        token_count: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> None:
         """
-        Record an external LLM call and token usage.
+        Record an external LLM call, token usage, and calculate cost.
 
         Args:
             provider: LLM provider name
             model_id: Provider model identifier
-            token_count: Total tokens reported by the provider, if available
+            token_count: Total tokens reported by the provider
+            input_tokens: Input tokens (for cost calculation)
+            output_tokens: Output tokens (for cost calculation)
         """
         self.metadata.llm_call_count += 1
         self.metadata.total_token_count += max(0, token_count)
+
+        # Calculate cost for WatsonX
+        if provider.lower() == "watsonx":
+            input_cost = (Decimal(input_tokens) / Decimal("1000")) * WATSONX_INPUT_COST_PER_1K
+            output_cost = (Decimal(output_tokens) / Decimal("1000")) * WATSONX_OUTPUT_COST_PER_1K
+            call_cost = input_cost + output_cost
+            
+            self.metadata.total_cost_usd += call_cost
+            cost_key = f"{provider}_{model_id}"
+            self.metadata.cost_breakdown[cost_key] = (
+                self.metadata.cost_breakdown.get(cost_key, Decimal("0")) + call_cost
+            )
+            
+            logger.debug(
+                "LLM call cost: $%.6f (input: %d tokens, output: %d tokens)",
+                call_cost,
+                input_tokens,
+                output_tokens,
+            )
 
         if self.langfuse_enabled and self._trace:
             try:
@@ -138,10 +191,24 @@ class LocalObservability:
                         "provider": provider,
                         "model_id": model_id,
                         "total_token_count": token_count,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
                     },
                 )
             except Exception as exc:
                 logger.warning("Failed to record LLM span in Langfuse: %s", exc)
+
+    def cache_hit(self) -> None:
+        """Record a cache hit for token optimization tracking."""
+        # Cache statistics are tracked in TokenOptimizer itself
+        # This method is a placeholder for future integration
+        logger.debug("Cache hit recorded")
+
+    def cache_miss(self) -> None:
+        """Record a cache miss for token optimization tracking."""
+        # Cache statistics are tracked in TokenOptimizer itself
+        # This method is a placeholder for future integration
+        logger.debug("Cache miss recorded")
 
     def prompt(self, usage: PromptUsage) -> None:
         """
@@ -314,8 +381,83 @@ class LocalObservability:
 
         return scores
 
+    def record_error(
+        self,
+        error: Exception,
+        node: str,
+        agent: str | None = None,
+        retry_count: int = 0,
+        recovered: bool = False,
+        recovery_strategy: str | None = None,
+    ) -> None:
+        """
+        Record an error that occurred during workflow execution.
+
+        Args:
+            error: The exception that occurred
+            node: Node where error occurred
+            agent: Agent name if applicable
+            retry_count: Number of retry attempts
+            recovered: Whether error was recovered from
+            recovery_strategy: Strategy used for recovery
+        """
+        error_record = ErrorRecord(
+            error_type=type(error).__name__,
+            error_message=str(error),
+            node=node,
+            agent=agent,
+            timestamp=datetime.now(UTC),
+            retry_count=retry_count,
+            recovered=recovered,
+            recovery_strategy=recovery_strategy,
+        )
+        
+        self.metadata.errors.append(error_record)
+        self.metadata.error_count += 1
+        if recovered:
+            self.metadata.recovery_count += 1
+        
+        logger.warning(
+            "Error recorded: %s in node %s (recovered: %s)",
+            error_record.error_type,
+            node,
+            recovered,
+        )
+
+        if self.langfuse_enabled and self._trace:
+            try:
+                self._trace.event(
+                    name=f"error_{node}",
+                    metadata={
+                        "error_type": error_record.error_type,
+                        "error_message": error_record.error_message,
+                        "node": node,
+                        "agent": agent,
+                        "recovered": recovered,
+                    },
+                )
+            except Exception as exc:
+                logger.warning("Failed to record error event in Langfuse: %s", exc)
+
     def finalize(self) -> None:
-        """Finalize observability and flush to Langfuse if enabled."""
+        """Finalize observability, calculate final metrics, and flush to Langfuse if enabled."""
+        # Set workflow end time and calculate duration
+        self.metadata.workflow_end_time = datetime.now(UTC)
+        if self.metadata.workflow_start_time:
+            duration = (
+                self.metadata.workflow_end_time - self.metadata.workflow_start_time
+            ).total_seconds()
+            self.metadata.workflow_duration_ms = duration * 1000
+            logger.info("Workflow completed in %.2fms", self.metadata.workflow_duration_ms)
+
+        # Log cost summary
+        if self.metadata.total_cost_usd > 0:
+            logger.info(
+                "Total workflow cost: $%.6f (tokens: %d)",
+                self.metadata.total_cost_usd,
+                self.metadata.total_token_count,
+            )
+
         if self.langfuse_enabled and self._client:
             try:
                 self._client.flush()
