@@ -73,6 +73,7 @@ module "networking" {
   database_subnet_cidrs = ["10.0.21.0/24", "10.0.22.0/24", "10.0.23.0/24"]
 
   single_nat_gateway = true # Cost optimization for dev
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }
@@ -104,6 +105,7 @@ module "eks" {
   application_node_max_size           = 10
 
   log_retention_days = 30
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }

@@ -37,6 +37,8 @@ locals {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 # ============================================================================
 # KMS Key — shared encryption key for all services
 # ============================================================================
@@ -45,6 +47,21 @@ resource "aws_kms_key" "main" {
   description             = "RWA Control Tower ${local.environment} encryption key"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableRootAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     Name = "${local.project_name}-${local.environment}-kms"
@@ -73,6 +90,7 @@ module "networking" {
   database_subnet_cidrs = ["10.1.21.0/24", "10.1.22.0/24", "10.1.23.0/24"]
 
   single_nat_gateway = false # One NAT GW per AZ for HA
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }
@@ -104,6 +122,7 @@ module "eks" {
   application_node_max_size           = 30
 
   log_retention_days = 365
+  kms_key_arn        = aws_kms_key.main.arn
 
   tags = local.common_tags
 }

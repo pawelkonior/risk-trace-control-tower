@@ -130,7 +130,7 @@ resource "aws_db_instance" "main" {
   performance_insights_kms_key_id = var.environment == "prod" ? var.kms_key_arn : null
 
   # Auto Minor Version Upgrade
-  auto_minor_version_upgrade = false
+  auto_minor_version_upgrade = true
 
   tags = merge(
     var.tags,

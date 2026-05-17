@@ -185,7 +185,8 @@ resource "aws_msk_scram_secret_association" "main" {
 
 resource "aws_cloudwatch_log_group" "msk" {
   name              = "/aws/msk/${var.project_name}-${var.environment}"
-  retention_in_days = 90
+  retention_in_days = 365
+  kms_key_id        = var.kms_key_arn
 
   tags = merge(
     var.tags,

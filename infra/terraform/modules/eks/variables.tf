@@ -39,6 +39,11 @@ variable "log_retention_days" {
   default     = 7
 }
 
+variable "kms_key_arn" {
+  description = "KMS key ARN for EKS secrets envelope encryption and CloudWatch log group encryption"
+  type        = string
+}
+
 # ============================================================================
 # Networking Configuration
 # ============================================================================

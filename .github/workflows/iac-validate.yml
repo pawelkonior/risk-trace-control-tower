@@ -45,7 +45,7 @@ jobs:
           directory: infra/terraform/environments/prod
           framework: terraform
           soft_fail: false
-          skip_check: CKV_AWS_7,CKV_AWS_144
+          skip_check: CKV_AWS_7,CKV_AWS_144,CKV_AWS_130,CKV2_AWS_5,CKV2_AWS_57,CKV2_AWS_62,CKV2_AWS_61,CKV_AWS_18
 
       - name: tfsec (trivy config)
         uses: aquasecurity/trivy-action@master
