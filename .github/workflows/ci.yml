@@ -168,9 +168,7 @@ jobs:
         with:
           context: apps/${{ matrix.service }}
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ matrix.service }}:latest
+          tags: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
