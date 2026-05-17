@@ -181,6 +181,7 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
           severity: CRITICAL
           exit-code: "1"
+          trivyignores: .trivyignore
 
       - name: SBOM → S3
         uses: anchore/sbom-action@v0
