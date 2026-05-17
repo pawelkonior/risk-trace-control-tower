@@ -6,6 +6,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .checkpointing import MemorySaverCheckpoint
+from .config import RwaAgentsConfig
 from .guardrails import GuardrailService
 from .observability import LocalObservability
 from .prompts import PromptRegistry
@@ -27,14 +28,16 @@ CHECKPOINTER = MemorySaverCheckpoint()
 
 
 def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
-    guardrails = GuardrailService()
-    prompts = PromptRegistry()
-    observability = LocalObservability(request.request_id, prompts.langfuse_enabled)
+    config = RwaAgentsConfig.from_env()
+    guardrails = GuardrailService(config.guardrails)
+    prompts = PromptRegistry(config.langfuse)
+    observability = LocalObservability(request.request_id, config.langfuse)
     observability.node("RequestValidation")
     input_guardrail = guardrails.scan("request_validation", request)
     observability.guardrail(input_guardrail)
     if input_guardrail.blocked:
         final = _blocked_commentary(request, observability, ["Input guardrail blocked request."])
+        observability.finalize()
         return _response(request, final, [], [], [], CommentaryViews(), observability.metadata)
 
     initial_state = build_agent_state(request)
@@ -54,6 +57,10 @@ def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
             observability,
             ["Workflow ended without final commentary."],
         )
+    
+    # Finalize observability and flush to Langfuse if enabled
+    observability.finalize()
+    
     return _response(
         request,
         final,
@@ -210,12 +217,8 @@ def _build_graph(
                 "guardrail_blocked": True,
                 "next_agent": "GuardrailBlocked",
             }
-        observability.score(
-            "groundedness",
-            1.0,
-            "Commentary is synthesized from deterministic findings.",
-        )
-        observability.score("faithfulness", 1.0, "Quantitative validation used Python tools only.")
+        # Compute all required evaluation scores
+        observability.compute_final_scores(dict(state))
         final.observability = observability.metadata
         return {
             "final_commentary": final,
