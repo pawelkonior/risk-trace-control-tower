@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
+  LoaderCircle,
   RotateCcw,
   Sparkles,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const tabLabels: Record<CommentaryTab, string> = {
   cro_view: "CRO View",
   cfo_view: "CFO View",
 };
+const MINIMUM_COMMENTARY_LOADING_MS = 900;
 
 export function AiExecutiveCommentaryCard({
   data,
@@ -45,6 +47,7 @@ export function AiExecutiveCommentaryCard({
   const status = response?.status ?? null;
   const isBlocked = status === "BLOCKED";
   const hasCalculatedRows = Boolean(data.calculatedRwaRows?.length);
+  const canRegenerate = hasCalculatedRows && !isLoading;
   const viewText = commentary ? commentary[activeTab] : "";
   const viewParagraphs = splitCommentary(viewText);
 
@@ -73,39 +76,70 @@ export function AiExecutiveCommentaryCard({
       </div>
 
       <div className="ai-commentary-panel">
-        {isLoading ? (
+        {isLoading && !commentary ? (
           <CommentaryState
-            icon={<Info size={16} />}
+            icon={<LoaderCircle className="ai-spinner" size={16} />}
             text="Generating AI Executive Commentary..."
           />
         ) : null}
 
         {!isLoading && error ? (
-          <CommentaryState
-            caption={error}
-            icon={<AlertTriangle size={16} />}
-            tone="danger"
-            text="AI Executive Commentary is unavailable. No substitute commentary was displayed."
-          />
+          <>
+            <CommentaryState
+              caption={error}
+              icon={<AlertTriangle size={16} />}
+              tone="danger"
+              text="AI Executive Commentary is unavailable. No substitute commentary was displayed."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
         ) : null}
 
         {!isLoading && !error && !response ? (
-          <CommentaryState
-            icon={<Info size={16} />}
-            text="AI Executive Commentary is not available for the selected inputs."
-          />
+          <>
+            <CommentaryState
+              icon={<Info size={16} />}
+              text="AI Executive Commentary is not available for the selected inputs."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
         ) : null}
 
         {!isLoading && !error && isBlocked ? (
-          <CommentaryState
-            icon={<AlertTriangle size={16} />}
-            tone="danger"
-            text="AI Executive Commentary was blocked by safety controls and is not available for the selected inputs."
-          />
+          <>
+            <CommentaryState
+              icon={<AlertTriangle size={16} />}
+              tone="danger"
+              text="AI Executive Commentary was blocked by safety controls and is not available for the selected inputs."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
         ) : null}
 
-        {!isLoading && !error && commentary && !isBlocked ? (
-          <div className="ai-commentary-content">
+        {!error && commentary && !isBlocked ? (
+          <div
+            className={`ai-commentary-content ${
+              isLoading ? "ai-commentary-content-loading" : ""
+            }`}
+          >
             <div className="ai-commentary-copy">
               {viewParagraphs.map((paragraph) => (
                 <p className="ai-commentary-text" key={paragraph}>
@@ -119,16 +153,20 @@ export function AiExecutiveCommentaryCard({
                 Commentary generated on {formatGeneratedAt(commentary.generated_at)} by{" "}
                 {commentary.source_label}
               </span>
-              <button
-                className="button button-secondary compact-button"
-                disabled={isLoading || !hasCalculatedRows}
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
                 onClick={onRegenerate}
-                type="button"
-              >
-                <RotateCcw size={14} />
-                <span>Regenerate</span>
-              </button>
+              />
             </div>
+          </div>
+        ) : null}
+
+        {isLoading && commentary ? (
+          <div className="ai-commentary-loading-overlay" role="status" aria-live="polite">
+            <LoaderCircle className="ai-spinner" size={20} />
+            <span>Generating AI Executive Commentary...</span>
+            <small>Running guarded agent workflow</small>
           </div>
         ) : null}
       </div>
@@ -151,13 +189,18 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
       return;
     }
     const controller = new AbortController();
+    const startedAt = Date.now();
     setIsLoading(true);
     setError(null);
     postRwaExecutiveCommentary(request, controller.signal)
-      .then((payload) => {
-        setResponse(payload);
+      .then(async (payload) => {
+        await waitForMinimumDuration(startedAt);
+        if (!controller.signal.aborted) {
+          setResponse(payload);
+        }
       })
-      .catch((cause: unknown) => {
+      .catch(async (cause: unknown) => {
+        await waitForMinimumDuration(startedAt);
         if (!controller.signal.aborted) {
           setError(errorMessage(cause));
         }
@@ -171,19 +214,22 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   }, [requestSignature]);
 
   const regenerate = () => {
-    if (!request) {
+    if (!request || isLoading) {
       return;
     }
+    const startedAt = Date.now();
     setIsLoading(true);
     setError(null);
     postRwaExecutiveCommentary({
       ...request,
       request_id: `${request.request_id}-regen-${Date.now()}`,
     })
-      .then((payload) => {
+      .then(async (payload) => {
+        await waitForMinimumDuration(startedAt);
         setResponse(payload);
       })
-      .catch((cause: unknown) => {
+      .catch(async (cause: unknown) => {
+        await waitForMinimumDuration(startedAt);
         setError(errorMessage(cause));
       })
       .finally(() => setIsLoading(false));
@@ -277,6 +323,32 @@ function CommentaryState({
   );
 }
 
+function CommentaryStateActions({ children }: { children: ReactNode }) {
+  return <div className="ai-commentary-state-actions">{children}</div>;
+}
+
+function RegenerateButton({
+  disabled,
+  isLoading,
+  onClick,
+}: {
+  disabled: boolean;
+  isLoading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="button button-secondary compact-button"
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {isLoading ? <LoaderCircle className="ai-spinner" size={14} /> : <RotateCcw size={14} />}
+      <span>{isLoading ? "Thinking..." : "Regenerate"}</span>
+    </button>
+  );
+}
+
 function formatGeneratedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -297,6 +369,13 @@ function formatGeneratedAt(value: string) {
 
 function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : "Request failed";
+}
+
+function waitForMinimumDuration(startedAt: number) {
+  const remaining = MINIMUM_COMMENTARY_LOADING_MS - (Date.now() - startedAt);
+  return remaining > 0
+    ? new Promise((resolve) => window.setTimeout(resolve, remaining))
+    : Promise.resolve();
 }
 
 function splitCommentary(value: string) {

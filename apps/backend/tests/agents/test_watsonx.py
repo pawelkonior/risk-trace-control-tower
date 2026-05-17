@@ -99,6 +99,8 @@ def test_supervisor_uses_watsonx_when_enabled(monkeypatch) -> None:
     assert response.observability.guardrail_block_count == 0
     assert prompts
     assert "Do not calculate RWA formulas" in prompts[0]
+    assert "Do not copy deterministic baseline sentences verbatim" in prompts[0]
+    assert "Use PLN as the monetary unit" in prompts[0]
     assert "Raw portfolio rows and direct identifiers are intentionally not provided" in prompts[0]
     assert "ASSET-001" not in prompts[0]
 

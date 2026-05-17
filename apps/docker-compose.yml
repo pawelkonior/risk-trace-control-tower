@@ -33,6 +33,10 @@ services:
       RWA_CORS_ORIGINS: ${RWA_CORS_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:5173,http://localhost:5173}
       RWA_DATABASE_URL: ${RWA_DATABASE_URL:-postgresql+psycopg://rwa:rwa_local_password@postgres:5432/rwa_steering}
       RWA_AGENTS_LLM_PROVIDER: ${RWA_AGENTS_LLM_PROVIDER:-deterministic}
+      RWA_LANGFUSE_ENABLED: ${RWA_LANGFUSE_ENABLED:-false}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
       WATSONX_PROJECT_ID: ${WATSONX_PROJECT_ID:-}
       WATSONX_APIKEY: ${WATSONX_APIKEY:-}
       WATSONX_URL: ${WATSONX_URL:-https://eu-de.ml.cloud.ibm.com}

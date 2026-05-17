@@ -41,7 +41,7 @@ def run_rwa_analysis(request: RwaAnalysisRequest) -> RwaAnalysisResponse:
     prompts = PromptRegistry(config.langfuse)
     observability = LocalObservability(request.request_id, config.langfuse)
     observability.node("RequestValidation")
-    input_guardrail = guardrails.scan("request_validation", request)
+    input_guardrail = guardrails.scan("request_validation", _request_validation_summary(request))
     observability.guardrail(input_guardrail)
     if input_guardrail.blocked:
         final = _blocked_commentary(request, observability, ["Input guardrail blocked request."])
@@ -552,9 +552,14 @@ def _build_watsonx_prompt(
             "Synthesize executive-ready RWA commentary for bank reviewers.",
             "Use only the summarized facts below. Do not invent facts.",
             "Do not calculate RWA formulas; deterministic Python tools already did that.",
+            "Rewrite the deterministic baseline into fresh stakeholder narrative.",
+            "Do not copy deterministic baseline sentences verbatim.",
+            "Use PLN as the monetary unit for RWA and exposure amounts.",
+            "Avoid unsupported value judgements; stay within supplied validation facts.",
             "Return valid JSON only with executive_summary, cro_view, and cfo_view.",
             "",
             "Summarized deterministic facts:",
+            f"- generation_request_id: {request.request_id}",
             f"- input_record_count: {len(request.rwa_input_data)}",
             f"- output_record_count: {len(request.rwa_output_results)}",
             f"- total_positive_exposure: {total_exposure:.2f}",
@@ -584,6 +589,24 @@ def _sum_decimal(values: Iterable[Decimal]) -> Decimal:
     for value in values:
         total += value
     return total
+
+
+def _request_validation_summary(request: RwaAnalysisRequest) -> dict[str, Any]:
+    """Build a compact anonymized request summary for guardrail scanning."""
+    return {
+        "request_id": request.request_id,
+        "input_record_count": len(request.rwa_input_data),
+        "output_record_count": len(request.rwa_output_results),
+        "asset_classes": sorted({record.asset_class for record in request.rwa_input_data})[:20],
+        "sectors": sorted({record.sector for record in request.rwa_input_data})[:20],
+        "approaches": sorted(
+            {record.approach for record in request.rwa_input_data if record.approach}
+        )[:20],
+        "input_fields": sorted(RwaAnalysisRequest.model_fields.keys()),
+        "asset_id_prefixes": sorted(
+            {record.asset_id.split("-", 1)[0] for record in request.rwa_input_data}
+        ),
+    }
 
 
 def _synthesize_views(

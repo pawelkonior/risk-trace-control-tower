@@ -9,6 +9,58 @@ from .schemas import GuardrailResult
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_ENTITY_TYPES = ["EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD"]
+
+
+def _sensitive_regex_patterns() -> list[dict[str, Any]]:
+    """Limit LLM Guard custom sensitive regexes to PII, not dates or financial amounts."""
+    return [
+        {
+            "expressions": [
+                r"\b[A-Za-z0-9._%+-]+(\[AT\]|@)[A-Za-z0-9.-]+(\[DOT\]|\.)[A-Za-z]{2,}\b"
+            ],
+            "name": "EMAIL_ADDRESS_RE",
+            "examples": ["john.doe@example.com", "john.doe[AT]example[DOT]com"],
+            "context": [],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [
+                r"(?:(4\d{3}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})|(3[47]\d{2}[-\s]?\d{6}[-\s]?\d{5})|(3(?:0[0-5]|[68]\d)\d{11}))"
+            ],
+            "name": "CREDIT_CARD_RE",
+            "examples": ["4111111111111111", "378282246310005"],
+            "context": [],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"],
+            "name": "IBAN_RE",
+            "examples": ["PL61109010140000071219812874"],
+            "context": ["iban", "account"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b(?:\+?\d{1,3}[-.\s])?(?:\(?\d{3}\)?[-.\s])\d{3}[-.\s]\d{4}\b"],
+            "name": "PHONE_NUMBER_FORMATTED_RE",
+            "examples": ["+1 212 555 0100", "(212) 555-0100"],
+            "context": ["phone", "telephone", "mobile", "call"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b\d{3}-\d{2}-\d{4}\b"],
+            "name": "US_SSN_RE",
+            "examples": ["111-22-3333"],
+            "context": ["ssn", "social security"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+    ]
+
 
 class GuardrailService:
     """
@@ -69,13 +121,8 @@ class GuardrailService:
             if self.config.llm_guard_block_on_pii:
                 self._output_scanners.append(
                     Sensitive(
-                        entity_types=[
-                            "EMAIL_ADDRESS",
-                            "PHONE_NUMBER",
-                            "PERSON",
-                            "IBAN_CODE",
-                            "CREDIT_CARD",
-                        ],
+                        entity_types=_SENSITIVE_ENTITY_TYPES.copy(),
+                        regex_patterns=_sensitive_regex_patterns(),
                         redact=False,
                     )
                 )

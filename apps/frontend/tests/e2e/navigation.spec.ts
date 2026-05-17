@@ -135,12 +135,23 @@ test("switches lineage and briefing controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Explain RWA Movement" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate Board Commentary" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI Executive Commentary" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible({
+    timeout: 90_000,
+  });
   await expect(page.getByRole("tablist", { name: "Commentary views" })).toBeVisible();
+  await expect(page.locator(".ai-commentary-panel")).toContainText("Commentary generated on");
   await page.getByRole("tab", { name: "CRO View" }).click();
-  await expect(page.getByText("Risk review should focus")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "CRO View" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.locator(".ai-commentary-panel")).toContainText(/risk|validation|review/i);
   await page.getByRole("button", { name: "Regenerate" }).click();
-  await expect(page.getByText("RiskTrace Intelligence").first()).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Generating AI Executive Commentary...");
+  await expect(page.getByRole("button", { name: "Thinking..." })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible({
+    timeout: 90_000,
+  });
 
   await expect(page.getByRole("heading", { name: "Regulatory Watch" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Data Quality Findings" })).toBeVisible();

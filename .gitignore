@@ -17,4 +17,7 @@ mcps/.env
 mcps/.env.*
 !mcps/.env.example
 
+# Local app secrets
+apps/.env
+
 .bob/mcp.json
