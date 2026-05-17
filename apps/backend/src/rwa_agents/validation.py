@@ -27,4 +27,6 @@ def build_agent_state(request: RwaAnalysisRequest) -> AgentState:
         final_commentary=None,
         next_agent=None,
         guardrail_blocked=False,
+        llm_call_count=0,
+        total_token_count=0,
     )

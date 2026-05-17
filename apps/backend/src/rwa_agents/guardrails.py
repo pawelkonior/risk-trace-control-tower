@@ -9,6 +9,58 @@ from .schemas import GuardrailResult
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_ENTITY_TYPES = ["EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD"]
+
+
+def _sensitive_regex_patterns() -> list[dict[str, Any]]:
+    """Limit LLM Guard custom sensitive regexes to PII, not dates or financial amounts."""
+    return [
+        {
+            "expressions": [
+                r"\b[A-Za-z0-9._%+-]+(\[AT\]|@)[A-Za-z0-9.-]+(\[DOT\]|\.)[A-Za-z]{2,}\b"
+            ],
+            "name": "EMAIL_ADDRESS_RE",
+            "examples": ["john.doe@example.com", "john.doe[AT]example[DOT]com"],
+            "context": [],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [
+                r"(?:(4\d{3}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})|(3[47]\d{2}[-\s]?\d{6}[-\s]?\d{5})|(3(?:0[0-5]|[68]\d)\d{11}))"
+            ],
+            "name": "CREDIT_CARD_RE",
+            "examples": ["4111111111111111", "378282246310005"],
+            "context": [],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"],
+            "name": "IBAN_RE",
+            "examples": ["PL61109010140000071219812874"],
+            "context": ["iban", "account"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b(?:\+?\d{1,3}[-.\s])?(?:\(?\d{3}\)?[-.\s])\d{3}[-.\s]\d{4}\b"],
+            "name": "PHONE_NUMBER_FORMATTED_RE",
+            "examples": ["+1 212 555 0100", "(212) 555-0100"],
+            "context": ["phone", "telephone", "mobile", "call"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+        {
+            "expressions": [r"\b\d{3}-\d{2}-\d{4}\b"],
+            "name": "US_SSN_RE",
+            "examples": ["111-22-3333"],
+            "context": ["ssn", "social security"],
+            "score": 0.75,
+            "languages": ["en"],
+        },
+    ]
+
 
 class GuardrailService:
     """
@@ -69,13 +121,8 @@ class GuardrailService:
             if self.config.llm_guard_block_on_pii:
                 self._output_scanners.append(
                     Sensitive(
-                        entity_types=[
-                            "EMAIL_ADDRESS",
-                            "PHONE_NUMBER",
-                            "PERSON",
-                            "IBAN_CODE",
-                            "CREDIT_CARD",
-                        ],
+                        entity_types=_SENSITIVE_ENTITY_TYPES.copy(),
+                        regex_patterns=_sensitive_regex_patterns(),
                         redact=False,
                     )
                 )
@@ -89,9 +136,9 @@ class GuardrailService:
                 len(self._input_scanners),
                 len(self._output_scanners),
             )
-        except ImportError as exc:
+        except Exception as exc:
             logger.warning(
-                "LLM Guard library not available, falling back to local checks: %s",
+                "LLM Guard scanners unavailable, falling back to local checks: %s",
                 exc,
             )
             self.config.llm_guard_enabled = False
@@ -121,20 +168,34 @@ class GuardrailService:
             text = self._payload_to_text(payload)
 
             # Determine scanner set based on stage
-            is_output_stage = stage in {"output", "final_output", "worker_outputs"}
+            is_output_stage = self._is_output_stage(stage)
             scanners = self._output_scanners if is_output_stage else self._input_scanners
 
             # Run appropriate scan
             if is_output_stage:
-                _sanitized_output, results_valid, results_score = scan_output(scanners, "", text)
+                output_prompt = self._output_scan_prompt(stage)
+                sanitized_text, results_valid, results_score = scan_output(
+                    scanners,
+                    output_prompt,
+                    text,
+                )
             else:
-                _sanitized_prompt, results_valid, results_score = scan_prompt(scanners, text)
+                sanitized_text, results_valid, results_score = scan_prompt(scanners, text)
 
             # Extract categories from results
             categories: list[str] = []
             max_risk = 0.0
 
-            for scanner_name, is_valid in results_valid.items():
+            normalized_valid = {
+                scanner_name: self._coerce_valid(is_valid)
+                for scanner_name, is_valid in results_valid.items()
+            }
+            normalized_scores = {
+                scanner_name: self._coerce_score(score)
+                for scanner_name, score in results_score.items()
+            }
+
+            for scanner_name, is_valid in normalized_valid.items():
                 if not is_valid:
                     scanner_lower = scanner_name.lower()
                     if "injection" in scanner_lower:
@@ -147,10 +208,10 @@ class GuardrailService:
                         categories.append("toxicity")
 
                     # Get risk score for this scanner
-                    score = results_score.get(scanner_name, 1.0)
+                    score = normalized_scores.get(scanner_name, 1.0)
                     max_risk = max(max_risk, score)
 
-            blocked = max_risk >= 0.75 or not all(results_valid.values())
+            blocked = max_risk >= 0.75 or not all(normalized_valid.values())
 
             if blocked and self.config.llm_guard_fail_fast:
                 message = f"LLM Guard blocked content: {', '.join(categories)}"
@@ -167,6 +228,8 @@ class GuardrailService:
                 risk_score=max_risk,
                 categories=categories,
                 message=message,
+                affected_node=self._affected_node(stage),
+                sanitized_text_used=sanitized_text != text,
             )
 
         except Exception as exc:
@@ -201,7 +264,115 @@ class GuardrailService:
             risk_score=risk_score,
             categories=categories,
             message=message,
+            affected_node=self._affected_node(stage),
+            sanitized_text_used=False,
         )
+
+    def _affected_node(self, stage: str) -> str | None:
+        """Map guardrail scan stages to graph nodes for audit metadata."""
+        return {
+            "request_validation": "RequestValidation",
+            "data_analyst_prompt": "DataAnalystAgent",
+            "data_analyst_llm_input": "DataAnalystAgent",
+            "data_analyst_llm_output": "DataAnalystAgent",
+            "risk_expert_prompt": "RiskExpertAgent",
+            "risk_expert_llm_input": "RiskExpertAgent",
+            "risk_expert_llm_output": "RiskExpertAgent",
+            "worker_outputs": "AnalysisFanIn",
+            "supervisor_prompt": "SupervisorAgent",
+            "llm_input": "SupervisorAgent",
+            "llm_output": "SupervisorAgent",
+            "watsonx_output": "SupervisorAgent",
+            "supervisor_output": "SupervisorAgent",
+            "final_output": "FinalOutputGuard",
+        }.get(stage)
+
+    def _is_output_stage(self, stage: str) -> bool:
+        """Return whether a stage should be scanned as model/workflow output."""
+        return stage in {
+            "output",
+            "llm_output",
+            "watsonx_output",
+            "supervisor_output",
+            "final_output",
+            "worker_outputs",
+            "data_analyst_llm_output",
+            "risk_expert_llm_output",
+        }
+
+    def _output_scan_prompt(self, stage: str) -> str:
+        """Provide factual context for output relevance scanners."""
+        if stage in {"data_analyst_llm_output", "risk_expert_llm_output"}:
+            return (
+                "Worker agent output must be concise structured RWA commentary grounded "
+                "in deterministic tool observations, validation flags, and recommended actions."
+            )
+        if stage == "final_output":
+            return (
+                "RWA executive commentary must be a structured JSON payload with "
+                "executive_summary, cro_view, cfo_view, observations, quantitative "
+                "validation, validation flags, and recommended actions grounded in "
+                "deterministic RWA calculator outputs."
+            )
+        if stage in {"llm_output", "watsonx_output", "supervisor_output"}:
+            return (
+                "The model output must be concise stakeholder RWA commentary in JSON "
+                "fields executive_summary, cro_view, and cfo_view, grounded only in "
+                "provided deterministic findings and validation results."
+            )
+        return "Structured RWA analysis output must remain relevant, safe, and PII-free."
+
+    def _coerce_valid(self, value: Any) -> bool:
+        """Normalize llm-guard validity values across released result shapes."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, dict):
+            for key in ("valid", "is_valid", "passed"):
+                nested = value.get(key)
+                if isinstance(nested, bool):
+                    return nested
+            return bool(value)
+        if isinstance(value, list | tuple):
+            if not value:
+                return True
+            return self._coerce_valid(value[0])
+        if hasattr(value, "valid"):
+            nested = value.valid
+            if isinstance(nested, bool):
+                return nested
+        if hasattr(value, "passed"):
+            nested = value.passed
+            if isinstance(nested, bool):
+                return nested
+        return bool(value)
+
+    def _coerce_score(self, value: Any) -> float:
+        """Normalize llm-guard score values to the backend 0..1 risk range."""
+        if isinstance(value, bool) or value is None:
+            return 0.0
+        if isinstance(value, int | float):
+            return min(1.0, max(0.0, float(value)))
+        if isinstance(value, str):
+            try:
+                return min(1.0, max(0.0, float(value)))
+            except ValueError:
+                return 0.0
+        if isinstance(value, dict):
+            for key in ("score", "risk_score", "probability"):
+                if key in value:
+                    return self._coerce_score(value[key])
+            return 0.0
+        if isinstance(value, list | tuple):
+            for item in reversed(value):
+                score = self._coerce_score(item)
+                if score > 0:
+                    return score
+            return 0.0
+        if hasattr(value, "score"):
+            return self._coerce_score(value.score)
+        if hasattr(value, "risk_score"):
+            return self._coerce_score(value.risk_score)
+        return 0.0
 
     def _payload_to_text(self, payload: Any) -> str:
         """Convert payload to text for scanning."""

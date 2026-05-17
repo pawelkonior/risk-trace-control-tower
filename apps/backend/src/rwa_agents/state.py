@@ -35,3 +35,5 @@ class AgentState(TypedDict):
     final_commentary: FinalCommentary | None
     next_agent: str | None
     guardrail_blocked: bool
+    llm_call_count: int
+    total_token_count: int

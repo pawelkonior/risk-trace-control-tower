@@ -37,8 +37,17 @@ def test_workflow_returns_structured_commentary_for_valid_request() -> None:
     assert response.final_commentary.quantitative_validation[0].passed is True
     assert response.observability.checkpointer == "MemorySaver"
     assert response.observability.thread_id == request.request_id
+    assert response.observability.node_transition_count >= 8
     assert response.observability.tool_call_count == 2
     assert response.observability.guardrail_results
+    assert {result.affected_node for result in response.observability.guardrail_results} >= {
+        "RequestValidation",
+        "DataAnalystAgent",
+        "RiskExpertAgent",
+        "AnalysisFanIn",
+        "SupervisorAgent",
+        "FinalOutputGuard",
+    }
     assert {usage.prompt_name for usage in response.observability.prompt_usages} == {
         DATA_ANALYST_PROMPT,
         RISK_EXPERT_PROMPT,

@@ -108,6 +108,9 @@ class GuardrailResult(AgentSchema):
     risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
     categories: list[str] = Field(default_factory=list)
     message: str = ""
+    affected_node: str | None = None
+    sanitized_text_used: bool = False
+    trace_ref: str | None = None
 
 
 class PromptUsage(AgentSchema):
@@ -159,6 +162,11 @@ class WorkerAnalysisResult(AgentSchema):
     recommended_actions: list[RecommendedAction] = Field(default_factory=list)
     quantitative_validation: list[QuantitativeValidationItem] = Field(default_factory=list)
     react_steps: list[ReactStep] = Field(default_factory=list)
+    guardrail_results: list[GuardrailResult] = Field(default_factory=list)
+    guardrail_blocked: bool = False
+    messages: list[str] = Field(default_factory=list)
+    llm_call_count: int = Field(default=0, ge=0)
+    total_token_count: int = Field(default=0, ge=0)
 
 
 class FinalCommentary(AgentSchema):

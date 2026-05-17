@@ -118,6 +118,31 @@ class LocalObservability:
             except Exception as exc:
                 logger.warning("Failed to record tool span in Langfuse: %s", exc)
 
+    def llm(self, *, provider: str, model_id: str, token_count: int) -> None:
+        """
+        Record an external LLM call and token usage.
+
+        Args:
+            provider: LLM provider name
+            model_id: Provider model identifier
+            token_count: Total tokens reported by the provider, if available
+        """
+        self.metadata.llm_call_count += 1
+        self.metadata.total_token_count += max(0, token_count)
+
+        if self.langfuse_enabled and self._trace:
+            try:
+                self._trace.span(
+                    name=f"llm_{provider}",
+                    metadata={
+                        "provider": provider,
+                        "model_id": model_id,
+                        "total_token_count": token_count,
+                    },
+                )
+            except Exception as exc:
+                logger.warning("Failed to record LLM span in Langfuse: %s", exc)
+
     def prompt(self, usage: PromptUsage) -> None:
         """
         Record prompt usage.

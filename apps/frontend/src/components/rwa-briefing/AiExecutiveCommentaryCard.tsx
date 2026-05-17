@@ -2,9 +2,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
-  ListChecks,
+  LoaderCircle,
   RotateCcw,
-  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -13,12 +13,10 @@ import type {
   CalculatedRwaRow,
   RwaAnalysisRequest,
   RwaAnalysisResponse,
-  RwaAnalysisStatus,
   RwaRecommendedAction,
 } from "../../api/types";
 import type { RwaBriefingData } from "../../hooks/useRwaBriefingData";
 import { Card } from "../rwa-dashboard/Card";
-import { StatusBadge } from "../rwa-dashboard/StatusBadge";
 
 type CommentaryTab = "executive_summary" | "cro_view" | "cfo_view";
 
@@ -35,6 +33,7 @@ const tabLabels: Record<CommentaryTab, string> = {
   cro_view: "CRO View",
   cfo_view: "CFO View",
 };
+const MINIMUM_COMMENTARY_LOADING_MS = 900;
 
 export function AiExecutiveCommentaryCard({
   data,
@@ -48,97 +47,129 @@ export function AiExecutiveCommentaryCard({
   const status = response?.status ?? null;
   const isBlocked = status === "BLOCKED";
   const hasCalculatedRows = Boolean(data.calculatedRwaRows?.length);
+  const canRegenerate = hasCalculatedRows && !isLoading;
   const viewText = commentary ? commentary[activeTab] : "";
+  const viewParagraphs = splitCommentary(viewText);
 
   return (
     <Card className="briefing-card ai-commentary-card">
       <div className="ai-commentary-header">
-        <div className="briefing-panel-title">
-          <ShieldCheck size={15} />
+        <div className="briefing-panel-title ai-commentary-title">
+          <Sparkles size={15} />
           <h3>AI Executive Commentary</h3>
         </div>
-        <div className="ai-commentary-actions">
-          {status ? <StatusBadge tone={statusTone(status)}>{status}</StatusBadge> : null}
-          <button
-            className="button button-secondary compact-button"
-            disabled={isLoading || !hasCalculatedRows}
-            onClick={onRegenerate}
-            type="button"
-          >
-            <RotateCcw size={14} />
-            <span>Regenerate</span>
-          </button>
+        <div className="ai-commentary-tabs" role="tablist" aria-label="Commentary views">
+          {(Object.keys(tabLabels) as CommentaryTab[]).map((tab) => (
+            <button
+              aria-selected={activeTab === tab}
+              className={activeTab === tab ? "active" : ""}
+              disabled={!commentary || isBlocked || isLoading}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              role="tab"
+              type="button"
+            >
+              {tabLabels[tab]}
+            </button>
+          ))}
         </div>
       </div>
 
-      {commentary ? (
-        <div className="ai-commentary-meta">
-          <span>{commentary.source_label}</span>
-          <span>{formatDate(commentary.generated_at)}</span>
-          {response ? <span>{response.graph_backend}</span> : null}
-        </div>
-      ) : null}
+      <div className="ai-commentary-panel">
+        {isLoading && !commentary ? (
+          <CommentaryState
+            icon={<LoaderCircle className="ai-spinner" size={16} />}
+            text="Generating AI Executive Commentary..."
+          />
+        ) : null}
 
-      {isLoading ? (
-        <CommentaryState icon={<Info size={16} />} text="Generating AI Executive Commentary..." />
-      ) : null}
+        {!isLoading && error ? (
+          <>
+            <CommentaryState
+              caption={error}
+              icon={<AlertTriangle size={16} />}
+              tone="danger"
+              text="AI Executive Commentary is unavailable. No substitute commentary was displayed."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
+        ) : null}
 
-      {!isLoading && error ? (
-        <CommentaryState
-          caption={error}
-          icon={<AlertTriangle size={16} />}
-          tone="danger"
-          text="AI Executive Commentary is unavailable. No substitute commentary was displayed."
-        />
-      ) : null}
+        {!isLoading && !error && !response ? (
+          <>
+            <CommentaryState
+              icon={<Info size={16} />}
+              text="AI Executive Commentary is not available for the selected inputs."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
+        ) : null}
 
-      {!isLoading && !error && !response ? (
-        <CommentaryState
-          icon={<Info size={16} />}
-          text="AI Executive Commentary is not available for the selected inputs."
-        />
-      ) : null}
+        {!isLoading && !error && isBlocked ? (
+          <>
+            <CommentaryState
+              icon={<AlertTriangle size={16} />}
+              tone="danger"
+              text="AI Executive Commentary was blocked by safety controls and is not available for the selected inputs."
+            />
+            <CommentaryStateActions>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </CommentaryStateActions>
+          </>
+        ) : null}
 
-      {!isLoading && !error && isBlocked ? (
-        <CommentaryState
-          icon={<AlertTriangle size={16} />}
-          tone="danger"
-          text="AI Executive Commentary was blocked by safety controls and is not available for the selected inputs."
-        />
-      ) : null}
-
-      {!isLoading && !error && commentary && !isBlocked && response ? (
-        <>
-          <div className="ai-commentary-tabs" role="tablist" aria-label="Commentary views">
-            {(Object.keys(tabLabels) as CommentaryTab[]).map((tab) => (
-              <button
-                aria-selected={activeTab === tab}
-                className={activeTab === tab ? "active" : ""}
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                role="tab"
-                type="button"
-              >
-                {tabLabels[tab]}
-              </button>
-            ))}
+        {!error && commentary && !isBlocked ? (
+          <div
+            className={`ai-commentary-content ${
+              isLoading ? "ai-commentary-content-loading" : ""
+            }`}
+          >
+            <div className="ai-commentary-copy">
+              {viewParagraphs.map((paragraph) => (
+                <p className="ai-commentary-text" key={paragraph}>
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+            <RecommendedActions actions={commentary.recommended_actions} />
+            <div className="ai-commentary-footer">
+              <span>
+                Commentary generated on {formatGeneratedAt(commentary.generated_at)} by{" "}
+                {commentary.source_label}
+              </span>
+              <RegenerateButton
+                disabled={!canRegenerate}
+                isLoading={isLoading}
+                onClick={onRegenerate}
+              />
+            </div>
           </div>
-          <p className="ai-commentary-text">{viewText}</p>
-          <SupportingEvidence commentary={commentary} tab={activeTab} />
-          <RecommendedActions actions={commentary.recommended_actions} />
-          <div className="ai-commentary-observability">
-            <span>
-              Guardrail blocks: <strong>{response.observability.guardrail_block_count}</strong>
-            </span>
-            <span>
-              Tools: <strong>{response.observability.tool_call_count}</strong>
-            </span>
-            <span>
-              Thread: <strong>{response.observability.thread_id}</strong>
-            </span>
+        ) : null}
+
+        {isLoading && commentary ? (
+          <div className="ai-commentary-loading-overlay" role="status" aria-live="polite">
+            <LoaderCircle className="ai-spinner" size={20} />
+            <span>Generating AI Executive Commentary...</span>
+            <small>Running guarded agent workflow</small>
           </div>
-        </>
-      ) : null}
+        ) : null}
+      </div>
     </Card>
   );
 }
@@ -158,13 +189,18 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
       return;
     }
     const controller = new AbortController();
+    const startedAt = Date.now();
     setIsLoading(true);
     setError(null);
     postRwaExecutiveCommentary(request, controller.signal)
-      .then((payload) => {
-        setResponse(payload);
+      .then(async (payload) => {
+        await waitForMinimumDuration(startedAt);
+        if (!controller.signal.aborted) {
+          setResponse(payload);
+        }
       })
-      .catch((cause: unknown) => {
+      .catch(async (cause: unknown) => {
+        await waitForMinimumDuration(startedAt);
         if (!controller.signal.aborted) {
           setError(errorMessage(cause));
         }
@@ -178,19 +214,22 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   }, [requestSignature]);
 
   const regenerate = () => {
-    if (!request) {
+    if (!request || isLoading) {
       return;
     }
+    const startedAt = Date.now();
     setIsLoading(true);
     setError(null);
     postRwaExecutiveCommentary({
       ...request,
       request_id: `${request.request_id}-regen-${Date.now()}`,
     })
-      .then((payload) => {
+      .then(async (payload) => {
+        await waitForMinimumDuration(startedAt);
         setResponse(payload);
       })
-      .catch((cause: unknown) => {
+      .catch(async (cause: unknown) => {
+        await waitForMinimumDuration(startedAt);
         setError(errorMessage(cause));
       })
       .finally(() => setIsLoading(false));
@@ -240,78 +279,6 @@ export function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisReques
   };
 }
 
-function SupportingEvidence({
-  commentary,
-  tab,
-}: {
-  commentary: RwaAnalysisResponse["final_commentary"];
-  tab: CommentaryTab;
-}) {
-  if (tab === "executive_summary") {
-    return (
-      <div className="ai-commentary-grid">
-        <ObservationList items={commentary.data_quality_observations} title="Data Quality" />
-        <QuantitativeValidationList items={commentary.quantitative_validation} />
-      </div>
-    );
-  }
-
-  if (tab === "cro_view") {
-    return (
-      <div className="ai-commentary-grid">
-        <ObservationList items={commentary.risk_observations} title="Risk and Validation" />
-        <QuantitativeValidationList items={commentary.quantitative_validation} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="ai-commentary-grid">
-      <QuantitativeValidationList items={commentary.quantitative_validation} />
-    </div>
-  );
-}
-
-function ObservationList({
-  items,
-  title,
-}: {
-  items: RwaAnalysisResponse["final_commentary"]["data_quality_observations"];
-  title: string;
-}) {
-  return (
-    <div className="ai-observation-list">
-      <strong>{title}</strong>
-      {items.slice(0, 3).map((item) => (
-        <div className="ai-observation-row" key={`${item.agent}-${item.title}`}>
-          <StatusBadge tone={findingTone(item.severity)}>{item.severity}</StatusBadge>
-          <span>{item.title}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function QuantitativeValidationList({
-  items,
-}: {
-  items: RwaAnalysisResponse["final_commentary"]["quantitative_validation"];
-}) {
-  return (
-    <div className="ai-observation-list">
-      <strong>Quantitative Validation</strong>
-      {items.slice(0, 3).map((item) => (
-        <div className="ai-observation-row" key={item.asset_id}>
-          <StatusBadge tone={item.passed ? "success" : "danger"}>
-            {item.passed ? "passed" : "variance"}
-          </StatusBadge>
-          <span>{item.asset_id}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function RecommendedActions({ actions }: { actions: RwaRecommendedAction[] }) {
   if (!actions.length) {
     return (
@@ -323,18 +290,12 @@ function RecommendedActions({ actions }: { actions: RwaRecommendedAction[] }) {
   }
   return (
     <div className="ai-actions-list">
-      <div className="briefing-panel-title">
-        <ListChecks size={14} />
-        <h3>Recommended Actions</h3>
-      </div>
+      <strong>Recommended Actions</strong>
       {actions.map((action) => (
-        <label className="ai-action-row" key={action.id}>
-          <input checked={action.completed} readOnly type="checkbox" />
+        <div className="ai-action-row" key={action.id}>
+          <CheckCircle2 size={14} />
           <span>{action.label}</span>
-          <StatusBadge tone={action.priority === "high" ? "danger" : "warning"}>
-            {action.owner}
-          </StatusBadge>
-        </label>
+        </div>
       ))}
     </div>
   );
@@ -362,33 +323,64 @@ function CommentaryState({
   );
 }
 
-function statusTone(status: RwaAnalysisStatus) {
-  if (status === "BLOCKED") {
-    return "danger";
-  }
-  if (status === "LOOP_LIMIT_REACHED") {
-    return "warning";
-  }
-  return "success";
+function CommentaryStateActions({ children }: { children: ReactNode }) {
+  return <div className="ai-commentary-state-actions">{children}</div>;
 }
 
-function findingTone(severity: "info" | "warning" | "critical") {
-  if (severity === "critical") {
-    return "danger";
-  }
-  if (severity === "warning") {
-    return "warning";
-  }
-  return "neutral";
+function RegenerateButton({
+  disabled,
+  isLoading,
+  onClick,
+}: {
+  disabled: boolean;
+  isLoading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="button button-secondary compact-button"
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {isLoading ? <LoaderCircle className="ai-spinner" size={14} /> : <RotateCcw size={14} />}
+      <span>{isLoading ? "Thinking..." : "Regenerate"}</span>
+    </button>
+  );
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+function formatGeneratedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const day = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+  }).format(date);
+  return `${day} ${time}`;
 }
 
 function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : "Request failed";
+}
+
+function waitForMinimumDuration(startedAt: number) {
+  const remaining = MINIMUM_COMMENTARY_LOADING_MS - (Date.now() - startedAt);
+  return remaining > 0
+    ? new Promise((resolve) => window.setTimeout(resolve, remaining))
+    : Promise.resolve();
+}
+
+function splitCommentary(value: string) {
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
 }

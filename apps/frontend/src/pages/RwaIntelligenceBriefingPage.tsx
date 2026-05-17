@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download, FileText, Sparkles } from "lucide-react";
 
 import { BriefingKpiStrip } from "../components/rwa-briefing/BriefingKpiStrip";
 import {
@@ -7,7 +7,6 @@ import {
   RegulatoryWatchCard,
 } from "../components/rwa-briefing/BriefingInsightCards";
 import { EvidenceTraceabilityCard } from "../components/rwa-briefing/EvidenceTraceabilityCard";
-import { ManagementReviewPackCard } from "../components/rwa-briefing/ManagementReviewPackCard";
 import { RwaMovementAttributionCard } from "../components/rwa-briefing/RwaMovementAttributionCard";
 import {
   AiExecutiveCommentaryCard,
@@ -49,9 +48,21 @@ export function RwaIntelligenceBriefingPage({ onNavigate }: RwaIntelligenceBrief
     >
       <div className="rwa-page briefing-page">
         <PageHeader
-          title="RWA Intelligence Briefing"
-          description="RWA movement overview with traceable drivers, data quality and audit evidence"
+          title="5. RWA Intelligence Briefing"
+          description="AI-generated management commentary with traceable RWA movement attribution"
           actions={[
+            {
+              label: "Explain RWA Movement",
+              icon: FileText,
+              variant: "secondary",
+              onClick: () => runAction("briefing.explain-rwa-movement"),
+            },
+            {
+              label: "Generate Board Commentary",
+              icon: Sparkles,
+              variant: "purple",
+              onClick: commentary.regenerate,
+            },
             {
               label: "Export Board Pack",
               icon: Download,
@@ -71,13 +82,6 @@ export function RwaIntelligenceBriefingPage({ onNavigate }: RwaIntelligenceBrief
         {data ? (
           <>
             <BriefingKpiStrip kpis={data.kpis} />
-            <AiExecutiveCommentaryCard
-              data={data}
-              error={commentary.error}
-              isLoading={commentary.isLoading}
-              onRegenerate={commentary.regenerate}
-              response={commentary.response}
-            />
             <div className="briefing-top-grid">
               <RwaMovementAttributionCard
                 movementDrivers={data.movementAttribution.movementDrivers}
@@ -85,7 +89,13 @@ export function RwaIntelligenceBriefingPage({ onNavigate }: RwaIntelligenceBrief
                 totalChangePct={data.movementAttribution.totalChangePct}
                 waterfallData={data.movementAttribution.waterfallData}
               />
-              <ManagementReviewPackCard data={data.reviewPack} onAction={runAction} />
+              <AiExecutiveCommentaryCard
+                data={data}
+                error={commentary.error}
+                isLoading={commentary.isLoading}
+                onRegenerate={commentary.regenerate}
+                response={commentary.response}
+              />
             </div>
             <div className="briefing-mid-grid">
               <RegulatoryWatchCard data={data.regulatoryWatch} onAction={runAction} />

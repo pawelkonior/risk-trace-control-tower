@@ -471,6 +471,9 @@ export type RwaGuardrailResult = {
   risk_score: number;
   categories: string[];
   message: string;
+  affected_node?: string | null;
+  sanitized_text_used?: boolean;
+  trace_ref?: string | null;
 };
 
 export type RwaObservability = {

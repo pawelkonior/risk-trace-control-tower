@@ -1,5 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Gauge, Info, Target } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Info } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -29,7 +28,6 @@ export function RwaMovementAttributionCard({
   totalChangePct,
   waterfallData,
 }: RwaMovementAttributionCardProps) {
-  const analytics = movementAnalytics(movementDrivers, totalChange, totalChangePct);
   const closingLevel = waterfallData.find((item) => item.closing)?.closing ?? 0;
 
   return (
@@ -37,11 +35,6 @@ export function RwaMovementAttributionCard({
       <div className="briefing-card-header">
         <h3>RWA Movement Attribution (Drivers)</h3>
         <Info size={13} />
-      </div>
-      <div className="movement-analytics-strip" aria-label="Movement attribution indicators">
-        {analytics.map((item) => (
-          <MovementAnalyticsCard item={item} key={item.label} />
-        ))}
       </div>
       <div className="movement-content">
         <div className="waterfall-panel">
@@ -160,9 +153,6 @@ export function RwaMovementAttributionCard({
             </thead>
             <tbody>
               {movementDrivers.map(({ changePct, color, driver, impact }) => {
-                const impactValue = parseMoney(impact);
-                const share = Math.min(Math.abs(parsePercent(changePct)), 100);
-
                 return (
                   <tr key={driver}>
                     <td>
@@ -174,19 +164,16 @@ export function RwaMovementAttributionCard({
                     <td>
                       <span
                         className={`movement-impact-value ${
-                          impactValue < 0 ? "movement-impact-offset" : "movement-impact-growth"
+                          parseMoney(impact) < 0
+                            ? "movement-impact-offset"
+                            : "movement-impact-growth"
                         }`}
                       >
                         {impact}
                       </span>
                     </td>
                     <td>
-                      <span className="movement-share-cell">
-                        <strong>{changePct}</strong>
-                        <span className="movement-share-track">
-                          <i style={{ backgroundColor: color, width: `${share}%` }} />
-                        </span>
-                      </span>
+                      <span className="movement-share-cell">{changePct}</span>
                     </td>
                   </tr>
                 );
@@ -204,85 +191,6 @@ export function RwaMovementAttributionCard({
       </div>
     </Card>
   );
-}
-
-type MovementAnalyticsItem = {
-  detail: string;
-  icon: LucideIcon;
-  label: string;
-  tone: "blue" | "green" | "orange" | "purple";
-  value: string;
-};
-
-function MovementAnalyticsCard({ item }: { item: MovementAnalyticsItem }) {
-  const Icon = item.icon;
-
-  return (
-    <div className={`movement-analytic-card movement-analytic-${item.tone}`}>
-      <span className="movement-analytic-icon">
-        <Icon size={16} strokeWidth={2.1} />
-      </span>
-      <div>
-        <span>{item.label}</span>
-        <strong>{item.value}</strong>
-        <p>{item.detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function movementAnalytics(
-  movementDrivers: ApiMovementDriver[],
-  totalChange: string,
-  totalChangePct: string,
-): MovementAnalyticsItem[] {
-  const driverAmounts = movementDrivers.map((driver) => ({
-    ...driver,
-    amount: parseMoney(driver.impact),
-    pct: parsePercent(driver.changePct),
-  }));
-  const growthTotal = driverAmounts
-    .filter((driver) => driver.amount > 0)
-    .reduce((sum, driver) => sum + driver.amount, 0);
-  const offsetTotal = driverAmounts
-    .filter((driver) => driver.amount < 0)
-    .reduce((sum, driver) => sum + driver.amount, 0);
-  const leadDriver =
-    driverAmounts.reduce<(typeof driverAmounts)[number] | null>(
-      (winner, driver) => (!winner || Math.abs(driver.amount) > Math.abs(winner.amount) ? driver : winner),
-      null,
-    ) ?? driverAmounts[0];
-
-  return [
-    {
-      detail: `${totalChangePct} reconciled to drivers`,
-      icon: Target,
-      label: "Net movement",
-      tone: "blue",
-      value: `${formatImpact(totalChange)} PLN`,
-    },
-    {
-      detail: `${driverAmounts.filter((driver) => driver.amount > 0).length} upward drivers`,
-      icon: ArrowUpRight,
-      label: "Growth pressure",
-      tone: "orange",
-      value: `${formatImpact(growthTotal)} PLN`,
-    },
-    {
-      detail: "Collateral improvement",
-      icon: ArrowDownRight,
-      label: "Offset impact",
-      tone: "green",
-      value: `${formatImpact(offsetTotal)} PLN`,
-    },
-    {
-      detail: leadDriver?.driver ?? "No lead driver",
-      icon: Gauge,
-      label: "Lead driver share",
-      tone: "purple",
-      value: leadDriver?.changePct ?? "0.0%",
-    },
-  ];
 }
 
 function WaterfallTick({
@@ -306,23 +214,6 @@ function WaterfallTick({
 function parseMoney(value: string) {
   const parsed = Number(value.replace(/[,+\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parsePercent(value: string) {
-  const parsed = Number(value.replace(/[%+\s]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatImpact(value: string | number) {
-  const amount = typeof value === "number" ? value : parseMoney(value);
-  const abs = Math.abs(amount);
-  const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
-
-  if (abs >= 1_000_000_000) {
-    return `${sign}${(abs / 1_000_000_000).toFixed(2)}B`;
-  }
-
-  return `${sign}${Math.round(abs / 1_000_000)}M`;
 }
 
 function WaterfallLabel(props: {
