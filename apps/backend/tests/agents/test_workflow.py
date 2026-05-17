@@ -3,11 +3,17 @@ from __future__ import annotations
 import threading
 from decimal import Decimal
 
+from rwa_agents.config import GuardrailConfig
+from rwa_agents.guardrails import GuardrailService
+from rwa_agents.prompts import DATA_ANALYST_PROMPT, RISK_EXPERT_PROMPT, SUPERVISOR_PROMPT
 from rwa_agents.schemas import (
     AgentFinding,
+    FinalCommentary,
     QuantitativeValidationItem,
     ReactStep,
+    RecommendedAction,
     RwaAnalysisRequest,
+    ValidationFlag,
     WorkerAnalysisResult,
 )
 from rwa_agents.workflow import CHECKPOINTER, run_rwa_analysis
@@ -33,6 +39,12 @@ def test_workflow_returns_structured_commentary_for_valid_request() -> None:
     assert response.observability.thread_id == request.request_id
     assert response.observability.tool_call_count == 2
     assert response.observability.guardrail_results
+    assert {usage.prompt_name for usage in response.observability.prompt_usages} == {
+        DATA_ANALYST_PROMPT,
+        RISK_EXPERT_PROMPT,
+        SUPERVISOR_PROMPT,
+    }
+    assert {usage.source for usage in response.observability.prompt_usages} == {"local_fallback"}
 
 
 def test_workflow_records_internal_react_steps_on_structured_findings() -> None:
@@ -191,6 +203,91 @@ def test_unsafe_final_output_is_blocked_without_writing_unsafe_commentary(
     assert response.final_commentary.status == "BLOCKED"
     assert "jane.client@example.com" not in response.final_commentary.executive_summary
     assert response.observability.guardrail_block_count >= 1
+
+
+def test_final_output_guard_scans_complete_commentary_payload(monkeypatch) -> None:
+    scanned_payloads: list[str] = []
+    original_scan = GuardrailService.scan
+
+    def spy_scan(self: GuardrailService, stage: str, payload: object):
+        if stage == "final_output" and hasattr(payload, "model_dump_json"):
+            scanned_payloads.append(payload.model_dump_json())
+        return original_scan(self, stage, payload)
+
+    monkeypatch.setattr(GuardrailService, "scan", spy_scan)
+    request = RwaAnalysisRequest.model_validate(valid_payload())
+
+    response = run_rwa_analysis(request)
+
+    assert response.status == "COMPLETED"
+    assert scanned_payloads
+    scanned_text = scanned_payloads[0]
+    assert "executive_summary" in scanned_text
+    assert "cro_view" in scanned_text
+    assert "cfo_view" in scanned_text
+    assert "data_quality_observations" in scanned_text
+    assert "risk_observations" in scanned_text
+    assert "quantitative_validation" in scanned_text
+    assert "recommended_actions" in scanned_text
+    assert "validation_flags" in scanned_text
+
+
+def test_local_final_output_guard_blocks_unsafe_structured_fields() -> None:
+    guardrails = GuardrailService(GuardrailConfig(llm_guard_enabled=False))
+    unsafe_email = "jane.client@example.com"
+    final = FinalCommentary(
+        status="COMPLETED",
+        consensus_reached=True,
+        loop_count=1,
+        executive_summary="Safe summary.",
+        cro_view="Safe CRO view.",
+        cfo_view="Safe CFO view.",
+        data_quality_observations=[
+            AgentFinding(
+                agent="DataAnalystAgent",
+                kind="data_quality",
+                severity="warning",
+                title="Unsafe observation",
+                detail=f"Review {unsafe_email}",
+            )
+        ],
+        risk_observations=[],
+        quantitative_validation=[
+            QuantitativeValidationItem(
+                asset_id="ASSET-001",
+                expected_rwa_amount=Decimal("500"),
+                reported_rwa_amount=Decimal("500"),
+                variance_amount=Decimal("0"),
+                variance_pct=Decimal("0"),
+                passed=True,
+            )
+        ],
+        recommended_actions=[
+            RecommendedAction(
+                id="unsafe-action",
+                label=f"Contact {unsafe_email}",
+                owner="Risk",
+                priority="high",
+                source_agent="SupervisorAgent",
+            )
+        ],
+        validation_flags=[
+            ValidationFlag(
+                code="UNSAFE_FLAG",
+                severity="critical",
+                message=f"Unsafe flag mentions {unsafe_email}",
+                source_agent="SupervisorAgent",
+                requires_human_intervention=True,
+            )
+        ],
+        source_agents=["DataAnalystAgent", "RiskExpertAgent"],
+    )
+
+    result = guardrails.scan("final_output", final)
+
+    assert result.blocked is True
+    assert result.stage == "final_output"
+    assert "pii" in result.categories
 
 
 def test_state_is_checkpointed_by_thread_id() -> None:

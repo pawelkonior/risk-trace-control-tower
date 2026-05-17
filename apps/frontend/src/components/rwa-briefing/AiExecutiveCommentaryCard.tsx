@@ -47,6 +47,7 @@ export function AiExecutiveCommentaryCard({
   const commentary = response?.final_commentary ?? null;
   const status = response?.status ?? null;
   const isBlocked = status === "BLOCKED";
+  const hasCalculatedRows = Boolean(data.calculatedRwaRows?.length);
   const viewText = commentary ? commentary[activeTab] : "";
 
   return (
@@ -60,7 +61,7 @@ export function AiExecutiveCommentaryCard({
           {status ? <StatusBadge tone={statusTone(status)}>{status}</StatusBadge> : null}
           <button
             className="button button-secondary compact-button"
-            disabled={isLoading}
+            disabled={isLoading || !hasCalculatedRows}
             onClick={onRegenerate}
             type="button"
           >
@@ -70,27 +71,39 @@ export function AiExecutiveCommentaryCard({
         </div>
       </div>
 
-      <div className="ai-commentary-meta">
-        <span>{commentary?.source_label ?? "RiskTrace Intelligence"}</span>
-        <span>{commentary ? formatDate(commentary.generated_at) : data.generatedAt}</span>
-        {response ? <span>{response.graph_backend}</span> : null}
-      </div>
+      {commentary ? (
+        <div className="ai-commentary-meta">
+          <span>{commentary.source_label}</span>
+          <span>{formatDate(commentary.generated_at)}</span>
+          {response ? <span>{response.graph_backend}</span> : null}
+        </div>
+      ) : null}
 
-      {isLoading ? <CommentaryState icon={<Info size={16} />} text="Generating commentary" /> : null}
+      {isLoading ? (
+        <CommentaryState icon={<Info size={16} />} text="Generating AI Executive Commentary..." />
+      ) : null}
 
       {!isLoading && error ? (
-        <CommentaryState icon={<AlertTriangle size={16} />} tone="danger" text={error} />
+        <CommentaryState
+          caption={error}
+          icon={<AlertTriangle size={16} />}
+          tone="danger"
+          text="AI Executive Commentary is unavailable. No substitute commentary was displayed."
+        />
       ) : null}
 
       {!isLoading && !error && !response ? (
-        <CommentaryState icon={<Info size={16} />} text="No commentary has been generated yet" />
+        <CommentaryState
+          icon={<Info size={16} />}
+          text="AI Executive Commentary is not available for the selected inputs."
+        />
       ) : null}
 
       {!isLoading && !error && isBlocked ? (
         <CommentaryState
           icon={<AlertTriangle size={16} />}
           tone="danger"
-          text={commentary?.messages[0] ?? "Commentary blocked by guardrails"}
+          text="AI Executive Commentary was blocked by safety controls and is not available for the selected inputs."
         />
       ) : null}
 
@@ -111,13 +124,7 @@ export function AiExecutiveCommentaryCard({
             ))}
           </div>
           <p className="ai-commentary-text">{viewText}</p>
-          <div className="ai-commentary-grid">
-            <ObservationList
-              items={commentary.data_quality_observations}
-              title="Data Quality"
-            />
-            <ObservationList items={commentary.risk_observations} title="Risk and Validation" />
-          </div>
+          <SupportingEvidence commentary={commentary} tab={activeTab} />
           <RecommendedActions actions={commentary.recommended_actions} />
           <div className="ai-commentary-observability">
             <span>
@@ -141,10 +148,13 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const request = useMemo(() => (data ? buildCommentaryRequest(data) : null), [data]);
-  const requestSignature = request ? JSON.stringify(request.rwa_output_results) : "";
+  const requestSignature = request ? JSON.stringify(request) : "";
 
   useEffect(() => {
     if (!request) {
+      setResponse(null);
+      setError(null);
+      setIsLoading(false);
       return;
     }
     const controller = new AbortController();
@@ -156,7 +166,7 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Commentary unavailable");
+          setError(errorMessage(cause));
         }
       })
       .finally(() => {
@@ -181,7 +191,7 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
         setResponse(payload);
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : "Commentary unavailable");
+        setError(errorMessage(cause));
       })
       .finally(() => setIsLoading(false));
   };
@@ -189,69 +199,34 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   return { error, isLoading, regenerate, response };
 }
 
-function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisRequest {
-  // Use real calculated RWA rows if available, fallback to synthetic for backward compatibility
+export function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisRequest | null {
   const calculatedRows = data.calculatedRwaRows ?? [];
-  
-  if (calculatedRows.length > 0) {
-    // Map real calculated rows, excluding PII-like fields
-    const rows = calculatedRows.map((row: CalculatedRwaRow) => ({
-      input: {
-        asset_id: row.asset_id,
-        asset_class: row.entity_class,
-        sector: row.sector,
-        exposure_amount: row.exposure_amount,
-        risk_weight: row.risk_weight,
-        rating: row.rating ?? undefined,
-        pd: row.pd ?? undefined,
-        lgd: row.lgd ?? undefined,
-        maturity_years: row.maturity_years ?? undefined,
-        approach: row.approach,
-      },
-      output: {
-        asset_id: row.asset_id,
-        rwa_amount: row.rwa_amount,
-        exposure_amount: row.exposure_amount,
-        risk_weight: row.risk_weight,
-        approach: row.approach,
-      },
-    }));
 
-    return {
-      request_id: `briefing-${new Date(data.generatedAt).getTime() || Date.now()}`,
-      loop_limit: 2,
-      materiality_threshold: "0.05",
-      rwa_input_data: rows.map((row: { input: RwaAnalysisRequest["rwa_input_data"][0]; output: RwaAnalysisRequest["rwa_output_results"][0] }) => row.input),
-      rwa_output_results: rows.map((row: { input: RwaAnalysisRequest["rwa_input_data"][0]; output: RwaAnalysisRequest["rwa_output_results"][0] }) => row.output),
-    };
+  if (!calculatedRows.length) {
+    return null;
   }
 
-  // Fallback to synthetic data for backward compatibility
-  return buildSyntheticRequest(data);
-}
-
-function buildSyntheticRequest(data: RwaBriefingData): RwaAnalysisRequest {
-  const rows = data.movementAttribution.movementDrivers.map((driver, index) => {
-    const rwaAmount = Math.max(Math.abs(parseMoney(driver.impact)), 1);
-    const exposureAmount = rwaAmount * 2;
+  const rows = calculatedRows.map((row: CalculatedRwaRow, index) => {
     const assetId = `ASSET-${String(index + 1).padStart(3, "0")}`;
     return {
       input: {
         asset_id: assetId,
-        asset_class: driver.driver,
-        sector: sectorForDriver(driver.driver),
-        exposure_amount: exposureAmount.toFixed(2),
-        risk_weight: "0.50",
-        rating: index < 2 ? "BBB" : "BB",
-        pd: "0.0200",
-        lgd: "0.4500",
-        maturity_years: "2.50",
-        approach: "dashboard-calculated",
+        asset_class: row.entityClass,
+        sector: row.sector,
+        exposure_amount: row.exposureAmount,
+        risk_weight: row.riskWeight,
+        rating: row.rating ?? undefined,
+        pd: row.pd ?? undefined,
+        lgd: row.lgd ?? undefined,
+        maturity_years: row.maturityYears ?? undefined,
+        approach: row.approach,
       },
       output: {
         asset_id: assetId,
-        rwa_amount: rwaAmount.toFixed(2),
-        approach: "dashboard-calculated",
+        rwa_amount: row.rwaAmount,
+        exposure_amount: row.exposureAmount,
+        risk_weight: row.riskWeight,
+        approach: row.approach,
       },
     };
   });
@@ -263,6 +238,38 @@ function buildSyntheticRequest(data: RwaBriefingData): RwaAnalysisRequest {
     rwa_input_data: rows.map((row) => row.input),
     rwa_output_results: rows.map((row) => row.output),
   };
+}
+
+function SupportingEvidence({
+  commentary,
+  tab,
+}: {
+  commentary: RwaAnalysisResponse["final_commentary"];
+  tab: CommentaryTab;
+}) {
+  if (tab === "executive_summary") {
+    return (
+      <div className="ai-commentary-grid">
+        <ObservationList items={commentary.data_quality_observations} title="Data Quality" />
+        <QuantitativeValidationList items={commentary.quantitative_validation} />
+      </div>
+    );
+  }
+
+  if (tab === "cro_view") {
+    return (
+      <div className="ai-commentary-grid">
+        <ObservationList items={commentary.risk_observations} title="Risk and Validation" />
+        <QuantitativeValidationList items={commentary.quantitative_validation} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="ai-commentary-grid">
+      <QuantitativeValidationList items={commentary.quantitative_validation} />
+    </div>
+  );
 }
 
 function ObservationList({
@@ -279,6 +286,26 @@ function ObservationList({
         <div className="ai-observation-row" key={`${item.agent}-${item.title}`}>
           <StatusBadge tone={findingTone(item.severity)}>{item.severity}</StatusBadge>
           <span>{item.title}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function QuantitativeValidationList({
+  items,
+}: {
+  items: RwaAnalysisResponse["final_commentary"]["quantitative_validation"];
+}) {
+  return (
+    <div className="ai-observation-list">
+      <strong>Quantitative Validation</strong>
+      {items.slice(0, 3).map((item) => (
+        <div className="ai-observation-row" key={item.asset_id}>
+          <StatusBadge tone={item.passed ? "success" : "danger"}>
+            {item.passed ? "passed" : "variance"}
+          </StatusBadge>
+          <span>{item.asset_id}</span>
         </div>
       ))}
     </div>
@@ -314,10 +341,12 @@ function RecommendedActions({ actions }: { actions: RwaRecommendedAction[] }) {
 }
 
 function CommentaryState({
+  caption,
   icon,
   text,
   tone = "neutral",
 }: {
+  caption?: string;
   icon: ReactNode;
   text: string;
   tone?: "danger" | "neutral";
@@ -325,7 +354,10 @@ function CommentaryState({
   return (
     <div className={`ai-commentary-state ai-commentary-state-${tone}`}>
       {icon}
-      <span>{text}</span>
+      <span>
+        {text}
+        {caption ? <small>{caption}</small> : null}
+      </span>
     </div>
   );
 }
@@ -350,28 +382,13 @@ function findingTone(severity: "info" | "warning" | "critical") {
   return "neutral";
 }
 
-function parseMoney(value: string) {
-  const normalized = value.replace(/[^0-9.-]/g, "");
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sectorForDriver(driver: string) {
-  if (/rating|fallback/i.test(driver)) {
-    return "Credit Quality";
-  }
-  if (/collateral|ltv/i.test(driver)) {
-    return "Collateral";
-  }
-  if (/portfolio|volume|new/i.test(driver)) {
-    return "Portfolio Growth";
-  }
-  return "Other";
-}
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function errorMessage(cause: unknown) {
+  return cause instanceof Error ? cause.message : "Request failed";
 }

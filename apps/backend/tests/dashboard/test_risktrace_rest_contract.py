@@ -190,5 +190,41 @@ def test_dashboard_filters_recalculate_snapshot_data(risktrace_client: TestClien
     assert filtered_payload["alerts"] != base_payload["alerts"]
 
 
+def test_briefing_snapshot_exposes_anonymized_calculated_rwa_rows(
+    risktrace_client: TestClient,
+) -> None:
+    response = risktrace_client.get("/v1/briefing/snapshot")
+
+    assert response.status_code == 200
+    payload = response.json()
+    calculated_rows = payload["calculatedRwaRows"]
+    assert calculated_rows
+
+    first_row = calculated_rows[0]
+    assert first_row["assetId"].startswith("ASSET-")
+    assert {
+        "assetId",
+        "entityClass",
+        "sector",
+        "exposureAmount",
+        "riskWeight",
+        "rwaAmount",
+        "approach",
+    }.issubset(first_row)
+    assert {
+        "customerName",
+        "counterpartyName",
+        "clientName",
+        "email",
+        "phone",
+        "address",
+        "accountNumber",
+        "iban",
+        "pesel",
+        "ssn",
+        "taxId",
+    }.isdisjoint(first_row)
+
+
 def _app_route_paths(client: TestClient) -> set[str]:
     return {route.path for route in client.app.routes if hasattr(route, "path")}

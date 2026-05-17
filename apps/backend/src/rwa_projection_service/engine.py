@@ -7,7 +7,6 @@ from typing import Any
 
 from rwa_calculator.paths import NCCR_MAPPING_PATH, PREPROD_COUNTRY_INFO_PATH
 from rwa_calculator.rwa_calculator.calculator import RwaCalculator
-from rwa_calculator.rwa_calculator.fastapi_app import CALCULATION_ENGINE_VERSION
 from rwa_calculator.rwa_calculator.models import CountryInfoRecord
 
 from .calendar import projection_dates
@@ -20,6 +19,7 @@ from .schemas import (
 )
 
 PROJECTION_ENGINE_VERSION = "RWA-PROJECTION-2026.2.0"
+CALCULATION_ENGINE_VERSION = "RWA-CALC-2026.2.0"
 DAY_COUNT_DENOMINATOR = Decimal("365")
 PROJECTION_VALUE_FIELDS = (
     "basel_3_0_rw_final",
