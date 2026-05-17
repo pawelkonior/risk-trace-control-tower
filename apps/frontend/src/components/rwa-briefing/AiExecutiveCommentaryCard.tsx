@@ -34,6 +34,15 @@ const tabLabels: Record<CommentaryTab, string> = {
   cfo_view: "CFO View",
 };
 const MINIMUM_COMMENTARY_LOADING_MS = 900;
+const LOADING_PHRASE_INTERVAL_MS = 2200;
+const commentaryLoadingPhrases = [
+  "Preparing anonymized RWA facts for the agent workflow.",
+  "DataAnalystAgent is checking data-quality signals.",
+  "RiskExpertAgent is reviewing RWA drivers and validation flags.",
+  "Calling IBM watsonx.ai for stakeholder commentary synthesis.",
+  "Running guardrails before anything reaches the dashboard.",
+  "Assembling Executive Summary, CRO View, and CFO View.",
+];
 
 export function AiExecutiveCommentaryCard({
   data,
@@ -50,6 +59,7 @@ export function AiExecutiveCommentaryCard({
   const canRegenerate = hasCalculatedRows && !isLoading;
   const viewText = commentary ? commentary[activeTab] : "";
   const viewParagraphs = splitCommentary(viewText);
+  const loadingPhrase = useLoadingPhrase(isLoading);
 
   return (
     <Card className="briefing-card ai-commentary-card">
@@ -78,6 +88,7 @@ export function AiExecutiveCommentaryCard({
       <div className="ai-commentary-panel">
         {isLoading && !commentary ? (
           <CommentaryState
+            caption={loadingPhrase}
             icon={<LoaderCircle className="ai-spinner" size={16} />}
             text="Generating AI Executive Commentary..."
           />
@@ -166,7 +177,7 @@ export function AiExecutiveCommentaryCard({
           <div className="ai-commentary-loading-overlay" role="status" aria-live="polite">
             <LoaderCircle className="ai-spinner" size={20} />
             <span>Generating AI Executive Commentary...</span>
-            <small>Running guarded agent workflow</small>
+            <small>{loadingPhrase}</small>
           </div>
         ) : null}
       </div>
@@ -236,6 +247,25 @@ export function useExecutiveCommentary(data: RwaBriefingData | null | undefined)
   };
 
   return { error, isLoading, regenerate, response };
+}
+
+function useLoadingPhrase(isLoading: boolean) {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setPhraseIndex(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setPhraseIndex((current) => (current + 1) % commentaryLoadingPhrases.length);
+    }, LOADING_PHRASE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
+
+  return commentaryLoadingPhrases[phraseIndex];
 }
 
 export function buildCommentaryRequest(data: RwaBriefingData): RwaAnalysisRequest | null {
