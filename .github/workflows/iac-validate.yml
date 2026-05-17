@@ -1,15 +1,7 @@
 name: IaC Validate
 
 on:
-  pull_request:
-    paths:
-      - "infra/terraform/**"
-      - "docker/**"
-  push:
-    branches: [main]
-    paths:
-      - "infra/terraform/**"
-      - "docker/**"
+  workflow_dispatch:
 
 env:
   TF_VERSION: "1.9.0"
